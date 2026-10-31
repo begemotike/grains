@@ -80,7 +80,9 @@ public struct CSVExporter: Sendable {
 
     /// RFC 4180 field quoting.
     static func quote(_ field: String) -> String {
-        guard field.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" || $0 == "\r\n" }) else {
+        // Test UTF-8 bytes, not Characters: a comma followed by a combining mark is one grapheme
+        // cluster that would otherwise slip through unquoted and add a column.
+        guard field.utf8.contains(where: { $0 == 0x2C || $0 == 0x22 || $0 == 0x0A || $0 == 0x0D }) else {
             return field
         }
         return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""

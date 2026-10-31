@@ -64,3 +64,18 @@ final class EntryParserTests: XCTestCase {
         XCTAssertEqual(entry.note, "iPad")
     }
 }
+
+final class EntryMetadataDecodingTests: XCTestCase {
+    func testEmptyObjectDecodesToEmptyMetadata() throws {
+        let m = try JSONDecoder().decode(EntryMetadata.self, from: Data("{}".utf8))
+        XCTAssertNil(m.recovered)
+        XCTAssertTrue(m.extra.isEmpty)
+    }
+
+    func testRecoveredWithoutExtraKeepsRecovered() throws {
+        let json = #"{"recovered":{"lastHeartbeat":100,"noticedAt":200,"reconciled":false}}"#
+        let m = try JSONDecoder().decode(EntryMetadata.self, from: Data(json.utf8))
+        XCTAssertNotNil(m.recovered)
+        XCTAssertEqual(m.recovered?.reconciled, false)
+    }
+}

@@ -114,3 +114,11 @@ final class CSVExporterTests: XCTestCase {
         XCTAssertEqual(csv, exporter.csv(for: w43, entries: es.reversed(), now: s))
     }
 }
+
+final class CSVQuotingTests: XCTestCase {
+    func testCombiningMarkAfterCommaStillQuotes() {
+        XCTAssertEqual(CSVExporter.quote("a,\u{301}b"), "\"a,\u{301}b\"")
+        XCTAssertEqual(CSVExporter.quote("x\"\u{301}y"), "\"x\"\"\u{301}y\"")
+        XCTAssertEqual(CSVExporter.quote("plain"), "plain")
+    }
+}

@@ -114,8 +114,10 @@ public actor TimerEngine {
         stopHeartbeats()
         lastBeat = nil
         do {
-            try store.clearHeartbeat()
+            // Marker first, heartbeat second: a kill between the two writes then leaves a stale
+            // heartbeat (harmless, overwritten on adopt) instead of a zero-credit recovery.
             try store.writeValue("1", forKey: EntryStoreKey.cleanShutdown)
+            try store.clearHeartbeat()
         } catch {
             lastBackgroundError = String(describing: error)
         }
@@ -193,14 +195,14 @@ public actor TimerEngine {
     /// one reconciled (in the same transaction).
     public func resumeRecovered() async throws {
         guard let pending = recovered else { return }
-        let reconciled = try reconciling(pending)
-        try begin(rawText: pending.rawText, alsoWriting: [.update(reconciled)])
+        let writes: [EntryWrite] = try reconciling(pending).map { [.update($0)] } ?? []
+        try begin(rawText: pending.rawText, alsoWriting: writes)
     }
 
     /// Marks the recovered entry reconciled, keeping the heartbeat stop time.
     public func acceptRecovered() async throws {
         guard let pending = recovered else { return }
-        try store.update(try reconciling(pending))
+        if let reconciled = try reconciling(pending) { try store.update(reconciled) }
         recovered = nil
         broadcast()
     }
@@ -291,11 +293,17 @@ public actor TimerEngine {
         running = nil
         lastBeat = nil
         stopHeartbeats()
+        // Rule 3 of timer-engine.md: no heartbeat may outlive the running entry, including when
+        // the entry was stopped externally (History edit) and observed through `reload()`.
+        do { try store.clearHeartbeat() } catch { lastBackgroundError = String(describing: error) }
         updateTicker()
     }
 
-    private func reconciling(_ entry: Entry) throws -> Entry {
-        var current = try store.entry(id: entry.id) ?? entry
+    /// Returns the stored row marked reconciled, or nil when the row no longer exists (soft
+    /// deleted in History after the notice appeared). Falling back to the in-memory snapshot
+    /// would resurrect the deleted row.
+    private func reconciling(_ entry: Entry) throws -> Entry? {
+        guard var current = try store.entry(id: entry.id) else { return nil }
         current.metadata.recovered?.reconciled = true
         current.updatedAt = now()
         return current

@@ -88,6 +88,17 @@ public struct EntryMetadata: Codable, Hashable, Sendable {
         self.extra = extra
     }
 
+    private enum CodingKeys: String, CodingKey { case recovered, extra }
+
+    /// Tolerant decoding: the schema default is the literal `{}` and hand-repaired blobs may
+    /// omit either key. A missing `extra` is empty, a missing `recovered` is nil; neither is
+    /// an error, so a recovery flag is never silently lost (D8).
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        recovered = try c.decodeIfPresent(RecoveryInfo.self, forKey: .recovered)
+        extra = try c.decodeIfPresent([String: String].self, forKey: .extra) ?? [:]
+    }
+
     public struct RecoveryInfo: Codable, Hashable, Sendable {
         /// Last moment the app is sure the timer was alive (last heartbeat).
         public var lastHeartbeat: Date

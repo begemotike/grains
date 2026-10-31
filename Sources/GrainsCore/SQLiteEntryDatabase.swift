@@ -65,21 +65,21 @@ final class SQLiteEntryDatabase: @unchecked Sendable {
     }
 
     func runningEntry() throws -> Entry? {
-        try entries("WHERE stopped_at IS NULL AND deleted_at IS NULL ORDER BY started_at DESC LIMIT 1").first
+        try entries("WHERE stopped_at IS NULL AND deleted_at IS NULL ORDER BY started_at DESC, id DESC LIMIT 1").first
     }
 
     func entries(overlapping interval: DateInterval) throws -> [Entry] {
         try entries(
             """
             WHERE deleted_at IS NULL AND started_at < ? AND (stopped_at IS NULL OR stopped_at > ?)
-            ORDER BY started_at ASC
+            ORDER BY started_at ASC, id ASC
             """,
             [SQLiteValue(interval.end), SQLiteValue(interval.start)]
         )
     }
 
     func recentEntries(limit: Int) throws -> [Entry] {
-        try entries("WHERE deleted_at IS NULL ORDER BY started_at DESC LIMIT ?", [.integer(Int64(max(0, limit)))])
+        try entries("WHERE deleted_at IS NULL ORDER BY started_at DESC, id DESC LIMIT ?", [.integer(Int64(max(0, limit)))])
     }
 
     func search(_ text: String, limit: Int) throws -> [Entry] {
@@ -89,7 +89,7 @@ final class SQLiteEntryDatabase: @unchecked Sendable {
             WHERE deleted_at IS NULL AND (grains_icontains(raw_text, ?1)
               OR grains_icontains(coalesce(client_text, ''), ?1)
               OR grains_icontains(coalesce(note, ''), ?1))
-            ORDER BY started_at DESC LIMIT ?2
+            ORDER BY started_at DESC, id DESC LIMIT ?2
             """,
             [.text(text), .integer(Int64(max(0, limit)))]
         )
@@ -105,7 +105,7 @@ final class SQLiteEntryDatabase: @unchecked Sendable {
                 SELECT client_text, client_id, max(started_at), count(*),
                        sum(CASE WHEN stopped_at IS NULL
                                 THEN (CASE WHEN ?1 > started_at THEN ?1 - started_at ELSE 0 END)
-                                ELSE coalesce(duration_seconds, 0) END)
+                                ELSE max(0, stopped_at - started_at) END)
                 FROM entries
                 WHERE deleted_at IS NULL AND client_text IS NOT NULL
                 GROUP BY client_text COLLATE NOCASE

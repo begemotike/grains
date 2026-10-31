@@ -28,7 +28,8 @@ public enum AtomicFileWriter {
                     offset += n
                 }
             }
-            guard fsync(fd) == 0 else { throw posixError() }
+            // F_FULLFSYNC is the real durability barrier on macOS; fsync alone only reaches the drive cache.
+            guard fcntl(fd, F_FULLFSYNC) == 0 || fsync(fd) == 0 else { throw posixError() }
             closed = true
             guard close(fd) == 0 else { throw posixError() }
             guard rename(tempPath, url.path) == 0 else { throw posixError() }
