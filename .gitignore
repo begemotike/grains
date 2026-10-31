@@ -1,0 +1,9 @@
+.DS_Store
+/build/
+/.build/
+/.swiftpm/
+*.xcodeproj
+xcuserdata/
+/App/Resources/Info.plist
+/App/Resources/Grains.entitlements
+/dist/

@@ -1,0 +1,124 @@
+name: Grains
+options:
+  bundleIdPrefix: net.outofajam
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: 9JHK4XRFW5
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+  configs:
+    Debug:
+      # Same Developer ID as Release so the app's identity (and any TCC grants such as
+      # Accessibility) stays stable across rebuilds. Hardened runtime off so the test bundle can inject.
+      CODE_SIGN_IDENTITY: "Developer ID Application"
+      ENABLE_HARDENED_RUNTIME: NO
+    Release:
+      CODE_SIGN_IDENTITY: "Developer ID Application"
+      ENABLE_HARDENED_RUNTIME: YES
+      OTHER_CODE_SIGN_FLAGS: "--timestamp"
+packages:
+  GrainsKit:
+    path: .
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.10.0"
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: "2.3.0"
+targets:
+  Grains:
+    type: application
+    platform: macOS
+    sources:
+      - path: App/Sources
+      - path: App/Resources/AppIcon.icns
+        buildPhase: resources
+        optional: true
+    dependencies:
+      - package: GrainsKit
+        product: GrainsCore
+      - package: GrainsKit
+        product: GrainsReports
+      - package: Sparkle
+      - package: KeyboardShortcuts
+      # The MCP server binary ships inside the app at Contents/MacOS/grains-mcp.
+      - target: grains-mcp
+        embed: true
+        codeSign: true
+    info:
+      path: App/Resources/Info.plist
+      properties:
+        CFBundleName: Grains
+        CFBundleDisplayName: Grains
+        CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: "15.0"
+        NSHumanReadableCopyright: "© 2026 Out of a Jam"
+        SUFeedURL: https://raw.githubusercontent.com/begemotike/grains/main/appcast.xml
+        SUPublicEDKey: REPLACE_WITH_GENERATED_KEY
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+    entitlements:
+      path: App/Resources/Grains.entitlements
+      properties:
+        # Not sandboxed (decision D3): the bundled MCP server and Claude Code read the same
+        # database path, and user-chosen CSV folders need no bookmarks. Hardened runtime is on.
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.outofajam.Grains
+        PRODUCT_NAME: Grains
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        COMBINE_HIDPI_IMAGES: YES
+  grains-mcp:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/grains-mcp
+    dependencies:
+      - package: GrainsKit
+        product: GrainsMCP
+    settings:
+      base:
+        PRODUCT_NAME: grains-mcp
+        PRODUCT_BUNDLE_IDENTIFIER: net.outofajam.Grains.mcp
+        SKIP_INSTALL: YES
+  GrainsAppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: App/Tests
+    dependencies:
+      - target: Grains
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.outofajam.GrainsAppTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Grains.app/Contents/MacOS/Grains"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  Grains:
+    build:
+      targets:
+        Grains: all
+        GrainsAppTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - GrainsAppTests
