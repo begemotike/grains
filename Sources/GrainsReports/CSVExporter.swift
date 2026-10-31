@@ -85,6 +85,12 @@ public struct CSVExporter: Sendable {
         guard field.utf8.contains(where: { $0 == 0x2C || $0 == 0x22 || $0 == 0x0A || $0 == 0x0D }) else {
             return field
         }
-        return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        // Double quotes at the scalar level for the same reason.
+        var escaped = String.UnicodeScalarView()
+        for scalar in field.unicodeScalars {
+            escaped.append(scalar)
+            if scalar == "\"" { escaped.append(scalar) }
+        }
+        return "\"" + String(escaped) + "\""
     }
 }
