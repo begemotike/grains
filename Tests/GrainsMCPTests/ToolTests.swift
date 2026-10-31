@@ -319,3 +319,20 @@ final class ToolTests: XCTestCase {
         }
     }
 }
+
+final class ToolHardeningTests: XCTestCase {
+    func testCSVRecordCountIgnoresNewlinesInsideQuotes() {
+        let csv = "a,b\n1,\"two\nlines\"\n3,4\n"
+        XCTAssertEqual(MCPServer.csvRecordCount(csv), 3)
+    }
+}
+
+final class AggregateRangeHardeningTests: XCTestCase {
+    func testWholeHistoryRangeAnswersQuickly() {
+        let server = Fixture.server()
+        let started = Date()
+        let result = server.ok("aggregate", ["from": "0001-01-01", "to": "9999-12-31", "group_by": "day"])
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        XCTAssertGreaterThan(result["rows"]?.arrayValue?.count ?? 0, 0)
+    }
+}

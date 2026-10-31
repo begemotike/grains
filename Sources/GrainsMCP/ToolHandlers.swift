@@ -124,7 +124,7 @@ extension MCPServer {
     }
 
     private func aggregate(_ args: Arguments, now: Date) throws -> ToolOutput {
-        let range = try range(args)
+        let requested = try range(args)
         let groupText = try args.requiredString("group_by")
         let groupBy: GroupBy
         switch groupText {
@@ -134,14 +134,21 @@ extension MCPServer {
         case "client_day", "clientDay": groupBy = .clientDay
         default: throw ToolFailure("aggregate: group_by must be one of day, week, client, client_day (got \"\(groupText)\").")
         }
-        let entries = try store.entries(overlapping: range)
+        // Buckets outside the data are always empty, so clamp the range to [earliest entry, now + 1 week]
+        // before bucketing: a "whole history" request (0001..9999) must not iterate millions of
+        // calendar days and stall the single-threaded stdio loop.
+        let dataStart = try store.earliestStart() ?? now
+        let clampedStart = max(requested.start, dataStart)
+        let clampedEnd = min(requested.end, now.addingTimeInterval(7 * 86_400))
+        let range = clampedStart < clampedEnd ? DateInterval(start: clampedStart, end: clampedEnd) : DateInterval(start: clampedStart, duration: 0)
+        let entries = range.duration > 0 ? try store.entries(overlapping: range) : []
         let rows = Aggregator.aggregate(entries: entries, range: range, groupBy: groupBy, spec: spec, now: now)
         // Day buckets are disjoint and merged within themselves, so their sum is the merged
         // total for the range, whatever group_by is (client rows may overlap each other).
         let totalSeconds = groupBy == .day
             ? rows.reduce(0) { $0 + $1.seconds }
             : Aggregator.aggregate(entries: entries, range: range, groupBy: .day, spec: spec, now: now).reduce(0) { $0 + $1.seconds }
-        var result = rangeJSON(range)
+        var result = rangeJSON(requested)
         result["group_by"] = .string(groupBy == .clientDay ? "client_day" : groupBy.rawValue)
         result["rows"] = .array(rows.map { row in
             [
@@ -260,7 +267,7 @@ extension MCPServer {
         let fetch = DateInterval(start: week.interval.start.addingTimeInterval(-1), end: week.interval.end)
         let entries = try store.entries(overlapping: fetch).map(redacted)
         let csv = CSVExporter(spec: spec).csv(for: week, entries: entries, now: now)
-        let rowCount = csv.split(separator: "\n", omittingEmptySubsequences: true).count - 1
+        let rowCount = Self.csvRecordCount(csv) - 1
         return .text(csv, structured: [
             "week": .string(week.isoIdentifier),
             "file_name": .string(CSVExporter.fileName(for: week)),
@@ -293,5 +300,26 @@ extension MCPServer {
         guard chars[4] == "-", chars[5] == "W",
               chars.enumerated().allSatisfy({ i, c in i == 4 || i == 5 || c.isASCII && c.isNumber }) else { return nil }
         return id
+    }
+}
+
+extension MCPServer {
+    /// Number of CSV records in `csv`, counting newlines only outside quoted fields
+    /// (a note may legitimately contain a line break inside quotes).
+    static func csvRecordCount(_ csv: String) -> Int {
+        var count = 0
+        var inQuotes = false
+        var sawContentOnLine = false
+        for scalar in csv.unicodeScalars {
+            switch scalar {
+            case "\"": inQuotes.toggle(); sawContentOnLine = true
+            case "\n" where !inQuotes:
+                if sawContentOnLine { count += 1 }
+                sawContentOnLine = false
+            default: sawContentOnLine = true
+            }
+        }
+        if sawContentOnLine { count += 1 }
+        return count
     }
 }
