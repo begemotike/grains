@@ -55,6 +55,8 @@ targets:
       - target: grains-mcp
         embed: true
         codeSign: true
+        copy:
+          destination: executables
     info:
       path: App/Resources/Info.plist
       properties:

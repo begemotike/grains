@@ -2,7 +2,7 @@
 
 **A native, keyboard-first macOS time tracker that gets out of the way.**
 
-Summon a floating overlay with a global shortcut (or a screen corner), type `Client - what you're doing`, press Return, and get back to work. Grains records the time deterministically in a local SQLite database, draws the passing workweek as a Monkeytype-style graph right in the overlay, keeps weekly CSV exports current, and exposes the records to Claude and ChatGPT through a bundled read-only MCP server. AI interprets; Grains keeps the clock.
+Summon a floating overlay with a global shortcut (⌘Escape by default, or a screen corner), type `Client - what you're doing`, press Return, and get back to work. Grains records the time deterministically in a local SQLite database, draws the passing workweek as a Monkeytype-style graph right in the overlay, keeps weekly CSV exports current, and exposes the records to Claude and ChatGPT through a bundled read-only MCP server. AI interprets; Grains keeps the clock.
 
 Grains was specified under the working name *Blink* ([original spec](docs/spec/Blink_Product_Spec.md)); the product is called Grains.
 
@@ -16,6 +16,8 @@ Grains was specified under the working name *Blink* ([original spec](docs/spec/B
 6. Local data ownership and portable CSV.
 7. Deterministic timing; AI interpretation.
 8. No UI complexity in exchange for advanced features.
+
+Repository: [github.com/begemotike/grains](https://github.com/begemotike/grains). Releases are Developer ID-signed, notarized zips with Sparkle auto-updates.
 
 ## Repository map
 
