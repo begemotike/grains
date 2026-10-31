@@ -123,6 +123,16 @@ public actor TimerEngine {
         }
     }
 
+    /// Synchronous variant of `prepareForCleanShutdown()` for `applicationWillTerminate`, which
+    /// cannot await (AppKit does not drain the main queue once `terminate:` is under way).
+    /// Writes the same values in the same order straight through the (synchronous,
+    /// thread-safe) store. It does not stop the heartbeat task: the process exits right after,
+    /// so no further heartbeat can be written. Errors are ignored (nothing can report them).
+    nonisolated public func prepareForCleanShutdownSync() {
+        try? store.writeValue("1", forKey: EntryStoreKey.cleanShutdown)
+        try? store.clearHeartbeat()
+    }
+
     /// Re-read the running entry from the store, e.g. after the History window edited it.
     /// Re-anchors `elapsed` if the running entry or its start time changed.
     public func reload() async {

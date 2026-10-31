@@ -54,9 +54,9 @@ See [interaction.md](interaction.md). Space toggles the timer only in control mo
 
 `RegisterEventHotKey` needs no Accessibility permission and works in full-screen Spaces; the sindresorhus `KeyboardShortcuts` package wraps it and provides the recorder control. The corner trigger uses `NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved)`, which also needs no permission, with a 350 ms dwell and a 12 pt hit zone; it is off by default and the user can pick the corner. We avoid the corners the system Hot Corners settings already use when we can detect them.
 
-## D14. Default shortcut: ⌥Space
+## D14. Default shortcut: ⌘Escape
 
-Fast to hit with one hand; does not collide with Spotlight (⌘Space) or Raycast's default (⌥Space is Raycast's default too, so the recorder warns when a conflict is detected and the shortcut is trivially changeable).
+Chosen by the owner. ⌥⌘Escape is Force Quit, so plain ⌘Escape is free system-wide; it is one-handed and avoids ⌥Space (Raycast's default) and ⌘Space (Spotlight). It stays user-changeable in Settings (the recorder warns on conflicts); a shortcut the user already recorded is kept.
 
 ## D15. Overlay is an `NSPanel` (non-activating, floating) hosting SwiftUI
 
@@ -215,7 +215,7 @@ The panel is larger than the card (70 pt sides, 40 pt top, 100 pt bottom, card a
 ## D54. ExportService details
 
 - Debounce is coalescing: the first change for a week opens a 5 s window and later changes ride along, so a week is written at most once per 5 s and a stream of edits cannot postpone the write forever.
-- The service remembers which weeks each entry occupied when last seen, so an edit that moves an entry, or a delete (the deleted row can no longer be read), also rewrites the old week. Before an entry has been seen in this session, only its current weeks are known; "Export all weeks now" repairs anything missed.
+- The service remembers which weeks each entry occupied when last seen, so an edit that moves an entry, or a delete (the deleted row can no longer be read), also rewrites the old week. At launch every live entry is primed (D61); "Export all weeks now" repairs anything missed.
 - A week with no entries is written only if its file already exists (deleting a week's last entry empties the file; empty weeks create no files).
 - `GRAINS_EXPORT_DIR` overrides the folder (development, so dev databases never write into `~/Documents/Grains`); Settings then shows the folder read-only.
 
@@ -237,3 +237,23 @@ The panel is larger than the card (70 pt sides, 40 pt top, 100 pt bottom, card a
 ## D58. Corner trigger defaults
 
 Default corner is bottom-left (top corners collide with the menu bar and Notification Center). The Hot Corners check (`com.apple.dock` `wvous-*-corner` not 0/1) runs whenever the trigger is configured and when Settings opens; a conflicting corner stays selectable but inactive, with a note. The trigger fires only when the overlay is not already visible.
+
+## D60. Clean shutdown is synchronous in `applicationWillTerminate`
+
+`applicationShouldTerminate` returns `.terminateNow`; `applicationWillTerminate` flushes pending CSV writes (`ExportService.flushSync()`) and then calls `TimerEngine.prepareForCleanShutdownSync()`, which writes `clean_shutdown = "1"` then clears the heartbeat directly through the (synchronous, thread-safe) store, in the same order as the async version. Replaces the earlier `.terminateLater` + `Task` reply: when `terminate:` is called from a main-queue job (any main-actor Task, Sparkle's relaunch handler, the `--snapshot` path) AppKit's nested run loop does not drain the main dispatch queue, so the reply never came, the app hung and the marker stayed 0. The sync variant does not stop the engine's heartbeat task; the process exits right after, so no heartbeat can follow. The `--snapshot` path also calls `terminate` via `RunLoop.main.perform`. The async `prepareForCleanShutdown()` stays for callers that can await.
+
+## D61. Export knows pre-launch entries' weeks; pending writes flush on quit
+
+`ExportService.start()` primes the known weeks of every live entry overlapping `earliestStart … now + 7 days`, so a delete or move of an entry from before this launch rewrites its old week (previously only entries seen in this session were known, and the deleted row can no longer be read, so the CSV stayed stale). A changed id the store no longer returns schedules its last known weeks. On quit, `flushSync()` cancels the debounce timers and writes the pending weeks on the main thread. The last write error is shown in Settings; "Export all weeks now" reports written and failed counts.
+
+## D62. Key auto-repeat is ignored for control-mode commands
+
+`KeyCaptureView` forwards `NSEvent.isARepeat` with each input; `InputStateMachine` drops repeats of Space, Return, Escape, whitespace text and the arrow/navigation commands in control mode (holding Space used to toggle every ~30 ms and create bursts of entries). Typing mode keeps repeats (held Space, ⌫, arrows edit as usual). Repeated printable keys and ⌫ in control mode still enter typing.
+
+## D63. No key input during the hide fade
+
+The panel stays key for the ~100 ms exit fade; keys arriving once `presentation.isPresented` is false are dropped instead of reaching the model.
+
+## D64. A stop does not commit the line; future stop times are rejected
+
+`AppModel.toggleTimer` marks the line committed only when it starts an entry (decided inside the serialized command chain). A draft typed while running, Escaped, then Space stops the timer and stays a draft, not the stopped entry's text. History rejects an edited stop time later than now ("The stop time is in the future."), like a future start.

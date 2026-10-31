@@ -4,7 +4,7 @@
 
 | Action | Result |
 |---|---|
-| Global shortcut (default ⌥Space, D14) | Overlay appears on the screen with the pointer, in control mode, key-ready within one frame. If already visible: hides (if visible but not focused: refocuses, D50). |
+| Global shortcut (default ⌘Escape, D14) | Overlay appears on the screen with the pointer, in control mode, key-ready within one frame. If already visible: hides (if visible but not focused: refocuses, D50). |
 | Corner trigger (off by default) | Pointer rests ≥ 350 ms in the chosen corner's 12 pt zone → overlay appears. Leaving the corner does not hide it. |
 | Escape in control mode | Hide. Timer unaffected. |
 | Escape in typing mode | Back to control mode, text kept (second Escape hides). |
@@ -42,6 +42,10 @@ The entry line is the only input. The overlay is always in one of two modes, sho
 | ↑ / ↓ | Caret to line start / end |
 
 Also in both modes: ⌘W hides, ⌘, opens Settings. Further details in D50.
+
+Key auto-repeat (D62): in control mode a held Space, Return, Escape or arrow key acts once; its repeats are ignored, so holding Space never toggles the timer in a burst. In typing mode repeats work as usual (held Space, ⌫, arrows). Keys pressed while the overlay is fading out after a hide are ignored (D63).
+
+A Space that stops the running entry leaves the line as it is: a draft typed and then Escaped stays a draft (shown as idle with the draft, not as the stopped entry), D64.
 
 Mode switching never needs a click. The first printable character is the switch into typing; Return/Escape is the switch out. There is no way to be unsure which mode is active: caret shape, label text and accent color differ.
 

@@ -137,7 +137,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showSettings() {
         guard let settings else { return }
         let actions = SettingsActions(
-            exportAll: { [weak self] in await self?.exporter?.exportAll() ?? 0 },
+            exportAll: { [weak self] in await self?.exporter?.exportAll() ?? (0, 0) },
+            exportError: { [weak self] in self?.exporter?.lastError },
             checkForUpdates: { [weak self] in self?.updater?.checkForUpdates(nil) },
             settingsDidChange: { [weak self] in self?.model?.settingsDidChange() }
         )
@@ -157,7 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(for: .seconds(options.demoState == .stopped ? 5 : 2))
                 let ok = overlay.writeSnapshot(to: path)
                 log.notice("snapshot \(ok ? "written" : "failed", privacy: .public): \(path, privacy: .public)")
-                NSApp.terminate(nil)
+                // Not from inside this main-queue job: terminate: runs a nested run loop that
+                // does not drain the main queue (D60).
+                RunLoop.main.perform { MainActor.assumeIsolated { NSApp.terminate(nil) } }
             }
         }
         guard let demo = options.demoState else { return }
@@ -184,21 +187,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: Termination (D7)
+    // MARK: Termination (D7, D60)
 
+    /// Shutdown is synchronous in `applicationWillTerminate`: a `.terminateLater` reply sent
+    /// from a Task never arrives when `terminate:` itself was called from a main-queue job
+    /// (Sparkle's relaunch, the snapshot path), because AppKit's nested run loop does not
+    /// drain the main dispatch queue.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let engine else { return .terminateNow }
-        Task {
-            await engine.prepareForCleanShutdown()
-            NSApp.reply(toApplicationShouldTerminate: true)
-        }
-        return .terminateLater
+        .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         observers.forEach { NotificationCenter.default.removeObserver($0); NSWorkspace.shared.notificationCenter.removeObserver($0) }
         rolloverTimer?.invalidate()
         stateTask?.cancel()
+        exporter?.flushSync()
+        engine?.prepareForCleanShutdownSync()
     }
 
     private func fatalOpen(_ error: any Error) {

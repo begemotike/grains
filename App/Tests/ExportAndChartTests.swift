@@ -121,3 +121,54 @@ final class CaretAndFormattingTests: XCTestCase {
         XCTAssertEqual(huge.scrollOffset(caret: 0), 0)
     }
 }
+
+/// The real ExportService flow: priming at start, delete of a pre-launch entry, flush on quit.
+@MainActor
+final class ExportServiceTests: XCTestCase {
+    private var folder: URL!
+
+    override func setUp() async throws {
+        folder = FileManager.default.temporaryDirectory.appending(path: "grains-export-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() async throws {
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    private func service(_ store: InMemoryEntryStore) -> ExportService {
+        let folder = folder!
+        return ExportService(store: store, spec: { WeekSpec() }, folder: { folder })
+    }
+
+    func testDeletingEntryFromBeforeLaunchSchedulesItsWeek() throws {
+        let start = Date().addingTimeInterval(-21 * 86_400)
+        let old = Entry(rawText: "Denali - old", startedAt: start, stoppedAt: start.addingTimeInterval(3_600))
+        let store = InMemoryEntryStore(entries: [old])
+        let exporter = service(store)
+        exporter.start()
+        XCTAssertEqual(exporter.pendingWeeks, [])
+        try store.softDelete(id: old.id, at: Date())
+        exporter.entriesChanged([old.id])
+        XCTAssertEqual(exporter.pendingWeeks, ExportWeekMapping.weeks(for: old, spec: WeekSpec(), now: Date()))
+        exporter.flushSync()
+    }
+
+    func testFlushSyncWritesPendingWeeksImmediately() throws {
+        let store = InMemoryEntryStore()
+        let exporter = service(store)
+        exporter.start()
+        let start = Date().addingTimeInterval(-7_200)
+        let entry = Entry(rawText: "Spruce - export", startedAt: start, stoppedAt: start.addingTimeInterval(3_600))
+        try store.insert(entry)
+        exporter.entriesChanged([entry.id])
+        let weeks = ExportWeekMapping.weeks(for: entry, spec: WeekSpec(), now: Date())
+        XCTAssertEqual(exporter.pendingWeeks, weeks)
+        exporter.flushSync()
+        XCTAssertEqual(exporter.pendingWeeks, [])
+        XCTAssertNil(exporter.lastError)
+        for week in weeks {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appending(path: CSVExporter.fileName(for: week)).path))
+        }
+    }
+}

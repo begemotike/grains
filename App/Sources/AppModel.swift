@@ -152,18 +152,22 @@ final class AppModel {
     func toggleTimer() {
         let text = line.text
         let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if hasText { lineIsCommitted = true }
         recentCursor = nil
-        enqueue { engine in
+        enqueue { [weak self] engine in
             if await engine.state.isRunning {
+                // A stop leaves the line alone: a draft typed while running stays a draft
+                // instead of being shown as the stopped entry.
                 try await engine.stop()
             } else if hasText {
+                await self?.markLineCommitted()
                 try await engine.start(rawText: text)
             } else {
                 try await engine.toggle()
             }
         }
     }
+
+    private func markLineCommitted() { lineIsCommitted = true }
 
     /// Return in typing mode: stop the running entry (if any) and start `text`.
     func commit(_ text: String) {

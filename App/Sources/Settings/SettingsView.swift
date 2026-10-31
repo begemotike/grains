@@ -5,7 +5,10 @@ import SwiftUI
 
 /// Callbacks Settings needs from the app.
 struct SettingsActions {
-    var exportAll: @MainActor () async -> Int
+    /// Writes every week; returns files written and failed.
+    var exportAll: @MainActor () async -> (written: Int, failed: Int)
+    /// The export service's last write error, if the most recent write of any week failed.
+    var exportError: @MainActor () -> String?
     var checkForUpdates: @MainActor () -> Void
     var settingsDidChange: @MainActor () -> Void
 }
@@ -19,6 +22,7 @@ struct SettingsView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var loginError: String?
     @State private var exportStatus: String?
+    @State private var exportError: String?
     @State private var copied: String?
     @State private var hotCorners = CornerZone.systemHotCorners()
 
@@ -90,13 +94,19 @@ struct SettingsView: View {
                     Button("Export all weeks now") {
                         exportStatus = "Exporting…"
                         Task {
-                            let count = await actions.exportAll()
+                            let result = await actions.exportAll()
+                            let count = result.written
                             exportStatus = "Wrote \(count) file\(count == 1 ? "" : "s")."
+                                + (result.failed > 0 ? " \(result.failed) failed." : "")
+                            exportError = actions.exportError()
                         }
                     }
                 }
                 if let exportStatus {
                     Text(exportStatus).font(.caption).foregroundStyle(.secondary)
+                }
+                if let exportError {
+                    Text("Last export error: \(exportError)").font(.caption).foregroundStyle(Theme.error)
                 }
             }
 
@@ -129,7 +139,10 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .onChange(of: settings.weekStartsOn) { actions.settingsDidChange() }
         .onChange(of: settings.targetHours) { actions.settingsDidChange() }
-        .onAppear { hotCorners = CornerZone.systemHotCorners() }
+        .onAppear {
+            hotCorners = CornerZone.systemHotCorners()
+            exportError = actions.exportError()
+        }
     }
 
     static var version: String {

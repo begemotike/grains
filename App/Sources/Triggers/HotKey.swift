@@ -1,8 +1,8 @@
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
-    /// Summon/dismiss the overlay. Default ⌥Space (D14); changeable in Settings.
-    static let toggleOverlay = Self("toggleOverlay", default: .init(.space, modifiers: [.option]))
+    /// Summon/dismiss the overlay. Default ⌘Escape (D14); changeable in Settings.
+    static let toggleOverlay = Self("toggleOverlay", default: .init(.escape, modifiers: [.command]))
 }
 
 /// The global shortcut (Carbon hot key via `KeyboardShortcuts`, D13). No permission needed;

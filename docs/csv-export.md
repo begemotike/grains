@@ -37,6 +37,9 @@ A first comment line is **not** used (breaks many importers). The schema version
 - Any store change → the week(s) containing the changed entry's start (and stop, if different) are scheduled; debounce 5 s; one write per scheduled week.
 - Week rollover → the finished week is written once more (final) and the new week file is created on its first entry.
 - Settings → "Export all weeks now" regenerates every week from `earliestStart()` to now.
+- At launch the service records the weeks every live entry occupies, so deleting or moving an entry created before this launch rewrites its old week too (a soft-deleted row can no longer be read), D61.
+- Quit → pending (debounced) weeks are written immediately, synchronously, before the app exits (D61).
+- A failed write is shown in Settings under CSV export ("Last export error"); "Export all weeks now" reports how many files failed.
 - Writes are atomic: write to `<file>.tmp-<uuid>` in the same directory, `fsync`, then `rename(2)` over the target.
 
 ## Determinism

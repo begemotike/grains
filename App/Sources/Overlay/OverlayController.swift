@@ -131,8 +131,10 @@ final class OverlayController: NSObject, KeyCaptureDelegate, NSWindowDelegate {
         hostingView.convert(presentation.caretRect, to: nil)
     }
 
-    func keyCapture(_ input: KeyInput) {
-        perform(InputStateMachine.actions(for: input, in: model.inputContext))
+    func keyCapture(_ input: KeyInput, isRepeat: Bool) {
+        // Keys typed during the hide fade (the panel is still key for ~100 ms) are dropped.
+        guard presentation.isPresented else { return }
+        perform(InputStateMachine.actions(for: input, in: model.inputContext, isRepeat: isRepeat))
     }
 
     /// Apply actions in order. Pure model mutations; engine work is queued by the model.

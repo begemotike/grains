@@ -90,11 +90,34 @@ enum InputStateMachine {
         var lineHasText: Bool { !lineText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    /// The actions for `input` in `context`.
-    static func actions(for input: KeyInput, in context: Context) -> [OverlayAction] {
+    /// The actions for `input` in `context`. `isRepeat` is a key auto-repeat event: in
+    /// control mode repeats of Space, Return, Escape and the navigation keys are ignored so
+    /// holding a key cannot toggle the timer (or page weeks) in a burst; typing mode repeats
+    /// everything.
+    static func actions(for input: KeyInput, in context: Context, isRepeat: Bool = false) -> [OverlayAction] {
         switch context.mode {
-        case .control: return control(input, context)
+        case .control:
+            if isRepeat && ignoresRepeatInControl(input) { return [] }
+            return control(input, context)
         case .typing: return typing(input, context)
+        }
+    }
+
+    /// Control-mode keys whose auto-repeat is dropped. A repeated printable key or ⌫ still
+    /// enters typing (the first event already switched modes, so this is rare).
+    private static func ignoresRepeatInControl(_ input: KeyInput) -> Bool {
+        switch input {
+        case .space, .returnKey, .escape: return true
+        case .text(let text):
+            // Whitespace from the input system toggles in control mode, like Space.
+            let cleaned = LineEditor.singleLine(text)
+            return !cleaned.isEmpty && cleaned.trimmingCharacters(in: .whitespaces).isEmpty
+        case .command(let command):
+            switch command {
+            case .move, .moveUp, .moveDown: return true
+            default: return false
+            }
+        case .shortcut, .composeBegan: return false
         }
     }
 

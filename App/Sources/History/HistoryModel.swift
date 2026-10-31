@@ -64,8 +64,13 @@ final class HistoryModel {
             errorMessage = "The stop time is before the start time."
             return false
         }
-        if start > Date() {
+        let now = Date()
+        if start > now {
             errorMessage = "The start time is in the future."
+            return false
+        }
+        if let stop, !entry.isRunning, stop > now {
+            errorMessage = "The stop time is in the future."
             return false
         }
         var updated = entry

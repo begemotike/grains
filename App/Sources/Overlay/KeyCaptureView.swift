@@ -4,7 +4,8 @@ import AppKit
 /// for the text input system (marked text, ranges, caret rectangle).
 @MainActor
 protocol KeyCaptureDelegate: AnyObject {
-    func keyCapture(_ input: KeyInput)
+    /// `isRepeat`: the key event is an auto-repeat (`NSEvent.isARepeat`).
+    func keyCapture(_ input: KeyInput, isRepeat: Bool)
     var editor: LineEditor { get set }
     func editorDidChange()
     /// Caret rectangle in window coordinates, for IME candidate windows.
@@ -27,7 +28,17 @@ final class KeyCaptureView: NSView, @preconcurrency NSTextInputClient {
 
     // MARK: Key events
 
+    /// Whether the key event being handled is an auto-repeat; inputs produced while handling
+    /// it (directly or via `interpretKeyEvents`) carry the flag.
+    private var handlingRepeat = false
+
+    private func send(_ input: KeyInput) {
+        delegate?.keyCapture(input, isRepeat: handlingRepeat)
+    }
+
     override func keyDown(with event: NSEvent) {
+        handlingRepeat = event.isARepeat
+        defer { handlingRepeat = false }
         if hasMarkedText() {
             interpretKeyEvents([event])
             return
@@ -35,9 +46,9 @@ final class KeyCaptureView: NSView, @preconcurrency NSTextInputClient {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if !mods.contains(.command) && !mods.contains(.control) {
             switch event.keyCode {
-            case 49: delegate?.keyCapture(.space); return
-            case 36, 76: delegate?.keyCapture(.returnKey); return
-            case 53: delegate?.keyCapture(.escape); return
+            case 49: send(.space); return
+            case 36, 76: send(.returnKey); return
+            case 53: send(.escape); return
             default: break
             }
         }
@@ -50,18 +61,18 @@ final class KeyCaptureView: NSView, @preconcurrency NSTextInputClient {
         guard mods.contains(.command), !mods.contains(.control), !mods.contains(.option), !mods.contains(.shift),
               let key = event.charactersIgnoringModifiers?.lowercased().first,
               Self.shortcutKeys.contains(key) else { return false }
-        delegate?.keyCapture(.shortcut(key))
+        delegate?.keyCapture(.shortcut(key), isRepeat: event.isARepeat)
         return true
     }
 
     override func doCommand(by selector: Selector) {
         let name = NSStringFromSelector(selector)
         if let command = Self.editCommands[name] {
-            delegate?.keyCapture(.command(command))
+            send(.command(command))
         } else if name == "insertNewline:" || name == "insertLineBreak:" {
-            delegate?.keyCapture(.returnKey)
+            send(.returnKey)
         } else if name == "cancelOperation:" {
-            delegate?.keyCapture(.escape)
+            send(.escape)
         }
         // Everything else (insertTab:, noop:, ...) is ignored without a beep.
     }
@@ -115,10 +126,10 @@ final class KeyCaptureView: NSView, @preconcurrency NSTextInputClient {
     ]
 
     // Edit-menu actions, in case a menu routes them here.
-    @objc func paste(_ sender: Any?) { delegate?.keyCapture(.shortcut("v")) }
-    @objc func copy(_ sender: Any?) { delegate?.keyCapture(.shortcut("c")) }
-    @objc func cut(_ sender: Any?) { delegate?.keyCapture(.shortcut("x")) }
-    override func selectAll(_ sender: Any?) { delegate?.keyCapture(.shortcut("a")) }
+    @objc func paste(_ sender: Any?) { send(.shortcut("v")) }
+    @objc func copy(_ sender: Any?) { send(.shortcut("c")) }
+    @objc func cut(_ sender: Any?) { send(.shortcut("x")) }
+    override func selectAll(_ sender: Any?) { send(.shortcut("a")) }
 
     // MARK: NSTextInputClient
 
@@ -130,14 +141,14 @@ final class KeyCaptureView: NSView, @preconcurrency NSTextInputClient {
             delegate.editor.insert(text)
             delegate.editorDidChange()
         } else {
-            delegate.keyCapture(.text(text))
+            send(.text(text))
         }
     }
 
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         guard let delegate else { return }
         if delegate.editor.markedRange == nil {
-            delegate.keyCapture(.composeBegan)
+            send(.composeBegan)
         }
         delegate.editor.setMarked(Self.plain(string), selection: selectedRange)
         delegate.editorDidChange()

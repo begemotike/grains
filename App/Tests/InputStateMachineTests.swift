@@ -178,4 +178,61 @@ final class InputStateMachineTests: XCTestCase {
         send(.space)
         XCTAssertEqual(log.last, .toggleTimer)
     }
+
+    // MARK: Key auto-repeat
+
+    func testControlIgnoresRepeatedToggleAndNavigationKeys() {
+        let c = control("Denali", committed: true)
+        for input: KeyInput in [.space, .returnKey, .escape, .text(" "),
+                                .command(.move(.left, .character, extend: false)),
+                                .command(.move(.right, .character, extend: false)),
+                                .command(.moveUp(extend: false)), .command(.moveDown(extend: false))] {
+            XCTAssertEqual(InputStateMachine.actions(for: input, in: c, isRepeat: true), [], "\(input)")
+        }
+        // The first press still acts.
+        XCTAssertEqual(InputStateMachine.actions(for: .space, in: c, isRepeat: false), [.toggleTimer])
+    }
+
+    func testTypingKeepsRepeatedKeys() {
+        let t = typing("ab")
+        XCTAssertEqual(InputStateMachine.actions(for: .space, in: t, isRepeat: true), [.insert(" ")])
+        XCTAssertEqual(InputStateMachine.actions(for: .command(.deleteBackward), in: t, isRepeat: true), [.deleteBackward])
+        XCTAssertEqual(InputStateMachine.actions(for: .command(.move(.left, .character, extend: false)), in: t, isRepeat: true),
+                       [.edit(.move(.left, .character, extend: false))])
+        XCTAssertEqual(InputStateMachine.actions(for: .text("a"), in: t, isRepeat: true), [.insert("a")])
+    }
+}
+
+/// `KeyCaptureView` forwards `NSEvent.isARepeat` with the inputs it produces.
+@MainActor
+final class KeyCaptureRepeatTests: XCTestCase {
+    private final class Recorder: KeyCaptureDelegate {
+        var received: [(KeyInput, Bool)] = []
+        var editor = LineEditor()
+        func keyCapture(_ input: KeyInput, isRepeat: Bool) { received.append((input, isRepeat)) }
+        func editorDidChange() {}
+        func caretRectInWindow() -> NSRect { .zero }
+    }
+
+    private func key(_ code: UInt16, _ chars: String, repeat isRepeat: Bool) -> NSEvent? {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                         context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                         isARepeat: isRepeat, keyCode: code)
+    }
+
+    func testSpaceRepeatFlagIsForwarded() throws {
+        let view = KeyCaptureView(frame: .zero)
+        let recorder = Recorder()
+        view.delegate = recorder
+        view.keyDown(with: try XCTUnwrap(key(49, " ", repeat: false)))
+        view.keyDown(with: try XCTUnwrap(key(49, " ", repeat: true)))
+        view.keyDown(with: try XCTUnwrap(key(36, "\r", repeat: true)))
+        XCTAssertEqual(recorder.received.map(\.0), [.space, .space, .returnKey])
+        XCTAssertEqual(recorder.received.map(\.1), [false, true, true])
+        // Held Space in control mode toggles once.
+        let toggles = recorder.received.flatMap {
+            InputStateMachine.actions(for: $0.0, in: .init(mode: .control), isRepeat: $0.1)
+        }
+        XCTAssertEqual(toggles, [.toggleTimer])
+    }
 }
