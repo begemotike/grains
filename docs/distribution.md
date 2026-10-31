@@ -29,3 +29,7 @@ Developer ID-signed, notarized zip, in-app updates with Sparkle 2, hosted on Git
 ## Sparkle key account
 
 The Grains key pair was generated with `generate_keys --account grains` (Sparkle supports one key per keychain account), so it is separate from Steam Shelf's default-account key. `release.sh` must pass `--account grains` to `generate_appcast`. Back it up with `generate_keys --account grains -x grains-sparkle-key.txt` and keep the file offline. Public key: `JRJ5jJC4MgEkyj+CvwIPXDx2uy1EWgsQkDMzZZYiSbM=`.
+
+## Icon
+
+`make icon` renders the app icon procedurally and packs it: `swift scripts/make-icon.swift build/AppIcon.png` draws a 1024×1024 PNG with CoreGraphics (charcoal `#161a20` squircle in the 824 pt macOS tile with a vignette, a low heap of ~60 golden `#e2b714` grains placed by a seeded SplitMix64 so output is deterministic, and a grey `#8a93a3` ascending time-graph line ending in a glowing gold dot; no text so it reads at 16 px). `scripts/make-icns.sh build/AppIcon.png App/Resources/AppIcon.icns` builds the 16–1024 px `.iconset` with `sips` and converts it with `iconutil`. The `.icns` is committed; regenerate only when the artwork changes.

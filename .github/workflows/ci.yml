@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    # macOS 26 runner image (Xcode 26). If it is unavailable or queues too long, fall back to:
+    #   runs-on: macos-latest
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package tests (core, reports, MCP)
+        run: swift test
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Ad-hoc signed Debug build: CI has no Developer ID certificate, so override the project's
+      # manual Developer ID signing.
+      - name: Build app
+        run: >
+          xcodebuild -project Grains.xcodeproj -scheme Grains -configuration Debug
+          -destination 'platform=macOS'
+          CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=
+          build
