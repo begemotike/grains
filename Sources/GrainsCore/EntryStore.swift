@@ -46,6 +46,50 @@ public protocol EntryWriting: EntryReading {
     func writeHeartbeat(entryID: UUID, at: Date) throws
     func readHeartbeat() throws -> (entryID: UUID, at: Date)?
     func clearHeartbeat() throws
+
+    /// Apply several inserts/updates atomically (all or nothing) and post one change
+    /// notification. The timer engine uses this so "stop the running entry, insert the next"
+    /// is a single transaction (docs/data-model.md). Added by D25.
+    func commit(_ writes: [EntryWrite]) throws
+    /// Raw access to the `kv` table (keys in `EntryStoreKey`). `nil` deletes the key.
+    /// The timer engine stores its clean-shutdown marker here. Added by D25.
+    func readValue(forKey key: String) throws -> String?
+    func writeValue(_ value: String?, forKey key: String) throws
+}
+
+/// One write inside `EntryWriting.commit(_:)`.
+public enum EntryWrite: Hashable, Sendable {
+    case insert(Entry)
+    case update(Entry)
+
+    /// The id of the entry this write touches.
+    public var entryID: UUID {
+        switch self {
+        case .insert(let entry), .update(let entry): return entry.id
+        }
+    }
+}
+
+/// Keys used in the `kv` table (docs/data-model.md).
+public enum EntryStoreKey {
+    public static let heartbeatEntryID = "heartbeat_entry_id"
+    public static let heartbeatAt = "heartbeat_at"
+    public static let cleanShutdown = "clean_shutdown"
+}
+
+/// Errors shared by every `EntryWriting` implementation, so callers can react the same way
+/// whether they talk to SQLite or to the in-memory store.
+public enum EntryStoreError: Error, Equatable, Sendable {
+    /// `update`/`softDelete` targeted an id that does not exist.
+    case notFound(UUID)
+    /// `insert` used an id that already exists.
+    case duplicateID(UUID)
+    /// A second entry with `stoppedAt == nil` would violate the one-running-entry rule.
+    case anotherEntryRunning
+    /// The database was written by a newer Grains (its `user_version` is higher than we know).
+    case unsupportedSchemaVersion(Int)
+    /// A read-only open found a file that has never been initialized by Grains.
+    case notAGrainsDatabase
 }
 
 /// Notification posted by the store on the main queue after any successful write,

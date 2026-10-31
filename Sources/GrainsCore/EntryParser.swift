@@ -29,9 +29,9 @@ public enum EntryParser {
     public static func parse(_ raw: String) -> Result {
         var best: Range<String.Index>? = nil
         for sep in separators {
-            if let r = raw.range(of: sep), best == nil || r.lowerBound < best!.lowerBound {
-                best = r
-            }
+            guard let r = raw.range(of: sep) else { continue }
+            if let current = best, current.lowerBound <= r.lowerBound { continue }
+            best = r
         }
         func clean(_ s: Substring) -> String? {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -89,3 +89,64 @@ Monkeytype's default is Roboto Mono; SF Mono is already on every Mac, renders be
 ## D22. History editing is minimal but present in v1
 
 The spec defers project management but the graph section requires backdated corrections. v1 includes a History window (menu bar) listing entries by week with inline editing of start/stop and soft delete. No rates, clients directory or invoicing.
+
+## D23. One-running index is on `(stopped_at IS NULL)`, not on `stopped_at`
+
+data-model.md first drafted `CREATE UNIQUE INDEX entries_one_running ON entries(stopped_at) WHERE stopped_at IS NULL AND deleted_at IS NULL`. That index enforces nothing: SQLite treats NULLs as distinct in UNIQUE indexes, so every running row is "unique" (verified: two running rows insert fine). The shipped v1 migration uses the same name and WHERE clause on the expression `((stopped_at IS NULL))`, which is constant (1) for every indexed row, so a second running entry fails with `UNIQUE constraint failed: index 'entries_one_running'`. Both stores surface that as `EntryStoreError.anotherEntryRunning`. data-model.md should be updated to match.
+
+## D24. Metadata JSON: sorted keys, Unix-seconds dates, undecodable blobs preserved
+
+`metadata` is encoded with `.sortedKeys` (and unescaped slashes) and dates as `.secondsSince1970` so `recovered.lastHeartbeat`/`noticedAt` read like the timestamp columns (the Foundation default would be seconds since 2001). A blob that fails to decode is not an error: the entry is returned with `extra["unparsed_metadata"]` holding the raw text, so one bad row never breaks a query and is not silently dropped on the next update.
+
+## D25. `EntryWriting` grew `commit(_:)` and kv access; shared `EntryStoreError`
+
+Members added (no existing signature changed): `commit([EntryWrite])` applies inserts/updates in one transaction with one change notification (the engine's stop-then-insert, and resume's reconcile-then-insert); `readValue(forKey:)` / `writeValue(_:forKey:)` expose the `kv` table (keys in `EntryStoreKey`) because the clean-shutdown marker had no API. `EntryStoreError` (`notFound`, `duplicateID`, `anotherEntryRunning`, `unsupportedSchemaVersion`, `notAGrainsDatabase`) is thrown by both stores; other SQLite failures surface as `SQLiteError` (code + message). Any third-party `EntryWriting` conformer must implement the three new members.
+
+## D26. Store semantics the docs left open
+
+- `update` bumps `updatedAt` only when the caller did not: if the passed value is not later than the stored one it becomes `max(now, stored)`.
+- `search` is Unicode case-insensitive (a registered `grains_icontains` SQL function; SQLite's LIKE folds ASCII only), newest first; whitespace-only text returns `[]`.
+- `clientLabels` groups with `COLLATE NOCASE` (ASCII folding, as specified), reports the most recent spelling and its `clientID`, orders by label (NOCASE), excludes entries with no client.
+- `softDelete` of an unknown id throws `notFound`; of an already deleted row is a no-op. Restoring is `update` with `deletedAt = nil`.
+- Heartbeat/kv writes do not post `.grainsEntriesDidChange` (they happen every 30 s and change no entry).
+- Read-only open throws for a missing file (`SQLITE_CANTOPEN`), for an uninitialized file (`notAGrainsDatabase`) and for a newer schema; it also sets `PRAGMA query_only`. Both stores take an optional injected `now` for tests.
+
+## D27. Timer engine timing details
+
+- `elapsed` for an entry the engine starts is purely monotonic from zero. For an entry it adopts at launch (clean relaunch) it is anchored to the entry's wall-clock age at that moment, then advances monotonically; otherwise the counter would restart at 0:00:00 after every quit. `reload()` re-anchors after the History window edits the running entry.
+- A heartbeat is written immediately when an entry starts or is adopted, then every interval; the schedule is anchored when it is created and catches up rather than bursting after a long suspension. A late heartbeat after `prepareForCleanShutdown()` or a stop is discarded (generation token).
+- `clock_jump` = cumulative signed integer seconds of (wall delta minus monotonic delta) for each heartbeat pair beyond 5 min; `long_sleep` = cumulative integer seconds of each wake over 2 h. The default clock is `ContinuousClock`, which advances during system sleep, so sleep alone never registers as a clock jump.
+- `states()` buffers the newest 64 values; ticks land on whole elapsed seconds.
+
+## D28. Timer engine command semantics
+
+- `start(rawText:)` with whitespace-only text throws `TimerEngineError.emptyText` (the UI uses `toggle()` for an empty line).
+- Starting any new work clears the in-memory `recovered` notice; the row keeps `reconciled = false` so it stays flagged for later review.
+- At launch with nothing running, an unreconciled recovered entry that is still the most recent entry is surfaced again as `recovered` (the user quit without answering the notice).
+- No heartbeat at all, or a heartbeat for a different entry, means zero credit: stopped at `startedAt`, `recovered.lastHeartbeat = startedAt`.
+- `undoLastStop()` (⌘Z) is single-level and only undoes a `stop()` made in this session while idle: it starts a new entry with that text at `now` (the gap is not counted; the stopped record is untouched). It returns nil otherwise, which keeps it distinct from `toggle()`.
+
+## D30. "As of now" views clip at now; record views use stored timestamps
+
+`WeekSeries` and `Stats` clip every entry to `[bounds.start, min(now, bounds.end))`, so actuals never extend into the future even if a stopped entry has a stop time after `now` (clock skew, hand edit). `Aggregator` and `CSVExporter` report records as stored (`Entry.seconds(within:asOf:)` semantics: only a running entry ends at `now`). For ordinary data the two agree. A week that has not started yet has the single series point `(week.start, 0)` and `elapsedFraction` 0.
+
+## D31. Overlap handling in reports
+
+Overlapping intervals are merged before summing everywhere in `GrainsReports`, so overlapping time counts once. `WeekSeries`/`Stats.weekHours` merge across all entries; `Stats.byClient` and `Aggregator` merge within one client/bucket only, so per-client sums can exceed the week total only when entries for *different* clients overlap. `AggregateRow.entryCount` counts entries contributing more than 0 s to the bucket. The CSV is per entry and never merges (it is a record export). Client grouping uses `clientText` exactly (no case folding); normalization belongs to `clientID`.
+
+## D32. CSV export details the schema left open
+
+- Timestamps are truncated to whole seconds *before* both formatting and duration arithmetic, so `duration_seconds` always matches the printed timestamps and the two halves of a week-crossing session sum exactly to `whole_duration_seconds`.
+- A row is included when the entry overlaps the week or starts inside it (zero-length entries are not lost). Rows are ordered by `started_at`, then `id` string.
+- UUIDs are uppercase (`UUID.uuidString`). Every record, including the last, ends in `\n`. A field is quoted when it contains `,`, `"`, `\n` or `\r`.
+- `hours` is computed in integers, rounded half up to 2 decimals. UTC offset is written `+00:00` (not `Z`) so the column shape is constant.
+- Local date/time columns and RFC 3339 strings use a Gregorian, `en_US_POSIX` calendar in `WeekSpec.calendar.timeZone`, regardless of the user's calendar or locale (no `DateFormatter`/`ISO8601DateFormatter`).
+- `recovered` is `true` only when `metadata.recovered` exists and `reconciled == false`.
+
+## D33. Aggregator keys and ordering (MCP `aggregate`)
+
+Keys: `day` → `yyyy-MM-dd` (local), `week` → ISO id of the spec week, `client` → the label or `(no client)` (with `clientText` nil), `clientDay` → `yyyy-MM-dd|<label>`. Buckets are clipped to the requested range and empty buckets are omitted. Order: day/week chronological; client by seconds descending then label (nil last); clientDay by day, then seconds descending, then label. `hours` is rounded to 2 decimals; `seconds` is exact.
+
+## D34. Week construction details
+
+`Week.days` are built by `calendar.date(byAdding: .day)` + `startOfDay` (never 86 400 s arithmetic); `startsOn` outside 1...7 is wrapped. `Week.previous/next` step via the instant just before the start / at the end. `Week` is also `Codable` for MCP payloads. `WeekSeries` additionally exposes `dailyHours` (7 values) and `targetLine`, and the ceiling rule is public as `WeekSeries.hoursCeiling(trackedHours:targetHours:)`. `Stats.byClient` is `[ClientHours]` instead of the tuple in the original sketch so it is `Equatable`/`Codable`.

@@ -17,7 +17,7 @@ CREATE TABLE entries (
   deleted_at       REAL,                        -- soft delete
   metadata         TEXT NOT NULL DEFAULT '{}'   -- JSON of EntryMetadata
 );
-CREATE UNIQUE INDEX entries_one_running ON entries(stopped_at) WHERE stopped_at IS NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX entries_one_running ON entries((stopped_at IS NULL)) WHERE stopped_at IS NULL AND deleted_at IS NULL;
 CREATE INDEX entries_started_at ON entries(started_at);
 CREATE INDEX entries_client_text ON entries(client_text COLLATE NOCASE);
 
@@ -25,7 +25,7 @@ CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 -- keys: 'heartbeat_entry_id', 'heartbeat_at' (Unix seconds), 'clean_shutdown' ('1' when the app quit normally)
 ```
 
-The partial unique index on `stopped_at IS NULL` is the database-level guarantee of "one running timer". Starting a new entry is therefore always `UPDATE running SET stopped_at = ?` then `INSERT`, inside one transaction.
+The partial unique index on the expression `(stopped_at IS NULL)` is the database-level guarantee (indexing the bare column would not work: SQLite treats every NULL as distinct in a UNIQUE index, see D23) of "one running timer". Starting a new entry is therefore always `UPDATE running SET stopped_at = ?` then `INSERT`, inside one transaction.
 
 ## Mapping to `Entry`
 
