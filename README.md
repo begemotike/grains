@@ -6,6 +6,8 @@ Summon a floating overlay with a global shortcut (⌘Escape by default, or a scr
 
 Grains was specified under the working name *Blink* ([original spec](docs/spec/Blink_Product_Spec.md)); the product is called Grains.
 
+![Grains overlay, running](docs/screenshots/running.png)
+
 ## Product principles (non-negotiable)
 
 1. Capture first; organize later.
