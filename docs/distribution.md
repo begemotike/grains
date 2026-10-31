@@ -25,3 +25,7 @@ Developer ID-signed, notarized zip, in-app updates with Sparkle 2, hosted on Git
 ## Versioning
 
 `X.Y.Z` marketing version; build number strictly rising (commit count). Never re-release a version.
+
+## Sparkle key account
+
+The Grains key pair was generated with `generate_keys --account grains` (Sparkle supports one key per keychain account), so it is separate from Steam Shelf's default-account key. `release.sh` must pass `--account grains` to `generate_appcast`. Back it up with `generate_keys --account grains -x grains-sparkle-key.txt` and keep the file offline. Public key: `JRJ5jJC4MgEkyj+CvwIPXDx2uy1EWgsQkDMzZZYiSbM=`.

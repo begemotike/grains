@@ -68,7 +68,7 @@ targets:
         LSMinimumSystemVersion: "15.0"
         NSHumanReadableCopyright: "© 2026 Out of a Jam"
         SUFeedURL: https://raw.githubusercontent.com/begemotike/grains/main/appcast.xml
-        SUPublicEDKey: REPLACE_WITH_GENERATED_KEY
+        SUPublicEDKey: JRJ5jJC4MgEkyj+CvwIPXDx2uy1EWgsQkDMzZZYiSbM=
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400
     entitlements:
