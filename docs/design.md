@@ -12,7 +12,7 @@ Reference: Monkeytype. Typography is the product. Dark first.
 
 | Element | Size / weight | Color |
 |---|---|---|
-| Entry line | 28 pt regular, tabular | text `#d1d7e0`; client portion accent `#e2b714`; separator ` - ` muted `#646f7e`; note `#d1d7e0` |
+| Entry line | 28 pt regular, tabular; shrinks to 18 pt to fit, then scrolls (D51) | text `#d1d7e0`; client portion accent `#e2b714`; separator ` - ` muted `#646f7e`; note `#d1d7e0` |
 | Session elapsed | 44 pt light, tabular numerals | accent while running, muted when stopped |
 | Metric numbers (week, today) | 22 pt regular | `#d1d7e0` |
 | Metric labels | 11 pt, uppercase, +0.08 em tracking | `#646f7e` |
@@ -37,7 +37,7 @@ A light theme is on the roadmap; tokens live in `App/Sources/Theme.swift` so it 
 ## States
 
 1. **Idle**: empty line with block caret, elapsed `00:00:00` muted, chart in neutral colors, label `type to begin · space to restart last`.
-2. **Typing**: bar caret, line text styles live as the parser splits it, label `return to start`.
+2. **Typing**: bar caret, line text styles live as the parser splits it, label `return to start` (`return to switch` while an entry runs, D50).
 3. **Running**: accent elapsed counter ticking, small pulsing dot before the line, chart active point glowing and rising, label `space to stop`.
 4. **Stopped** (just stopped): counter freezes then dims over 400 ms, line keeps the text in muted color, label `space to resume · type for new`.
 5. **Switching** (commit while running): counter resets with a quick 120 ms fade, chart adds the final point of the old segment then begins the new one; the line briefly flashes accent on the client portion.
@@ -52,7 +52,7 @@ A light theme is on the roadmap; tokens live in `App/Sources/Theme.swift` so it 
 
 ## Chart geometry
 
-Main lane 72 pt, elapsed lane 6 pt, 10 pt gap, weekday row 14 pt. Hairline grid at 0, ½ and the hours ceiling. Line width 2 pt, round joins. Active point 5 pt radius with 12 pt glow. Future region drawn as a dotted baseline only.
+A 14 pt header row (ceiling label left, `62% of week` right, week id when not current), main lane 72 pt, elapsed lane 6 pt, 10 pt gap, weekday row 14 pt (D56). Hairline grid at 0, ½ and the hours ceiling. Line width 2 pt, round joins. Active point 5 pt radius with 12 pt glow. Future region drawn as a dotted baseline only.
 
 ## Multi-display and Spaces
 
@@ -63,4 +63,4 @@ Appears on the screen with the mouse pointer; `canJoinAllSpaces` + `fullScreenAu
 - All overlay text is real text (VoiceOver reads the line, the mode and the counter).
 - Chart exposes an accessibility summary: "14.2 hours tracked, 40 percent of the week elapsed".
 - Respects Reduce Motion (no scale/glow animations) and Increase Contrast (brighter `sub`).
-- Minimum text size 10 pt; the overlay honors Dynamic Type scaling up to 150%.
+- Minimum text size 10 pt. (macOS has no Dynamic Type for custom fonts; the overlay uses fixed sizes. Revisit with a text-size setting.)

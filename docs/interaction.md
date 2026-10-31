@@ -4,7 +4,7 @@
 
 | Action | Result |
 |---|---|
-| Global shortcut (default ⌥Space, D14) | Overlay appears on the screen with the pointer, in control mode, key-ready within one frame. If already visible: hides. |
+| Global shortcut (default ⌥Space, D14) | Overlay appears on the screen with the pointer, in control mode, key-ready within one frame. If already visible: hides (if visible but not focused: refocuses, D50). |
 | Corner trigger (off by default) | Pointer rests ≥ 350 ms in the chosen corner's 12 pt zone → overlay appears. Leaving the corner does not hide it. |
 | Escape in control mode | Hide. Timer unaffected. |
 | Escape in typing mode | Back to control mode, text kept (second Escape hides). |
@@ -22,7 +22,7 @@ The entry line is the only input. The overlay is always in one of two modes, sho
 | Space | Toggle: stop the running entry; or start a new entry with the current line text (if the line is empty, restart the most recent entry's text) |
 | Return | Same as Space when the line has text; otherwise no-op |
 | Any printable character | Enter typing mode and insert it (the line is cleared first if it shows a committed/running entry's text) |
-| ⌫ | Enter typing mode editing the current line |
+| ⌫ | Enter typing mode editing the current line (deletes the character before the caret, D50) |
 | ← / → | Previous / next week in the chart |
 | ↑ / ↓ | Cycle recent entries into the line (quick re-start) |
 | ⌘, | Settings |
@@ -38,6 +38,10 @@ The entry line is the only input. The overlay is always in one of two modes, sho
 | Escape | Back to control mode, keep text |
 | ⌘A, ⌘⌫, ⌥⌫, ←/→ with modifiers | Standard text editing |
 | ⌘V | Paste (single line; newlines collapse to spaces) |
+| ⌘C / ⌘X | Copy / cut the selection |
+| ↑ / ↓ | Caret to line start / end |
+
+Also in both modes: ⌘W hides, ⌘, opens Settings. Further details in D50.
 
 Mode switching never needs a click. The first printable character is the switch into typing; Return/Escape is the switch out. There is no way to be unsure which mode is active: caret shape, label text and accent color differ.
 

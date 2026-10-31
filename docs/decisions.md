@@ -188,3 +188,52 @@ A week id resolves to the `WeekSpec` week whose `isoIdentifier` equals it, i.e. 
 ## D46. `grains-mcp` command line
 
 Flags: `--db <path>` (else `GrainsPaths.databaseURL`, which honors `GRAINS_DB_PATH`), `--export-dir <path>` (else `~/Documents/Grains`), `--redact-notes`, `--week-start <1-7>` (default 2, Monday; calendar `.autoupdatingCurrent`), `--version`, `--help`. Exit codes: 0 on stdin EOF or when stdout is closed, 2 when the database is missing ("Grains database not found at <path>. Launch Grains once to create it.") or cannot be opened read-only, 64 for usage errors. SIGPIPE is ignored so a closed stdout becomes a write error and a clean exit. The `--http` transport is not implemented (roadmap). Note: `GrainsPaths.databaseURL` creates `~/Library/Application Support/Grains/` as a side effect even in the MCP process; harmless, but the server never creates the database file.
+
+## D50. Key-table details interaction.md left open
+
+- ⌫ in control mode enters typing mode **and** deletes the character before the caret (one keystroke does what it says); it does not clear a committed line. Any other printable clears a committed line first.
+- Return in typing mode on an empty/whitespace line only returns to control mode (the engine rejects empty text, D28).
+- ⌘Z in typing mode does nothing (single-level ⌘Z is "undo stop", a control-mode command; there is no text undo in v1).
+- Added beyond the tables: ⌘C/⌘X copy/cut (selection, or the whole line for ⌘C in control mode), ⌘V in control mode enters typing and pastes, ⌘W hides like Escape. ↑/↓ in typing mode move to line start/end (single-line field convention), not recent cycling.
+- R/A are the recovery keys only in control mode while a recovered entry is pending (either case); otherwise they are ordinary letters.
+- The typing-mode label reads `return to switch` while an entry runs, `return to start` otherwise.
+- The hot key on an overlay that is visible but no longer key (the user clicked elsewhere with "hide when I click elsewhere" off) refocuses it instead of hiding it.
+- Key routing: Space/Return/Escape are taken by key code before the input system (except while composing marked text); ⌘ shortcuts in `performKeyEquivalent`; everything else goes through `interpretKeyEvents`, so movement/deletion follow the user's key bindings and dead keys/IMEs work via `NSTextInputClient`.
+
+## D51. Entry line fits by shrinking, then scrolls
+
+At 28 pt SF Mono only ~34 characters fit in the 584 pt line; typical entries (`Global Credit Union - Jamf certificate troubleshooting`, 54) do not. The line shrinks in 1 pt steps from 28 to 18 pt to show the whole entry, and beyond that scrolls horizontally to keep the caret visible. The line box keeps the 28 pt height so the layout never jumps. Rejected: wrapping (breaks "one continuous line"), fixed 28 pt with scrolling (hides the client portion).
+
+## D52. Overlay window geometry
+
+The panel is larger than the card (70 pt sides, 40 pt top, 100 pt bottom, card area up to 470 pt) so the design's 0 24 60 shadow is drawn by SwiftUI; the transparent margin passes clicks through and the panel never resizes with content. The card's top edge is at 22% of the pointer screen's full height from the top, clamped below the menu bar. Entrance/exit are SwiftUI animations of the card (the window is ordered out after the 90 ms fade; a show during the fade cancels it).
+
+## D53. History restore is limited to this session
+
+`EntryReading` excludes soft-deleted rows everywhere and has no "list deleted" call, and the app may not change the core API. The History window therefore offers Undo Delete and a "Deleted in this session" list with Restore (restore = `update` with `deletedAt = nil`, D26). A core `deletedEntries(overlapping:)` would allow a persistent trash view; revisit then. Editing text rewrites `rawText` only when the user changed the text field, then re-parses client/note.
+
+## D54. ExportService details
+
+- Debounce is coalescing: the first change for a week opens a 5 s window and later changes ride along, so a week is written at most once per 5 s and a stream of edits cannot postpone the write forever.
+- The service remembers which weeks each entry occupied when last seen, so an edit that moves an entry, or a delete (the deleted row can no longer be read), also rewrites the old week. Before an entry has been seen in this session, only its current weeks are known; "Export all weeks now" repairs anything missed.
+- A week with no entries is written only if its file already exists (deleting a week's last entry empties the file; empty weeks create no files).
+- `GRAINS_EXPORT_DIR` overrides the folder (development, so dev databases never write into `~/Documents/Grains`); Settings then shows the folder read-only.
+
+## D55. Claude configuration mirrors the app's settings
+
+"Copy Claude Code command" / "Copy Claude Desktop JSON" use `Bundle.main.bundleURL/Contents/MacOS/grains-mcp` and add `--redact-notes` when "Share notes with AI" is off, `--export-dir <path>` when the export folder is not the default, and `--week-start <n>` when the week does not start on Monday (flags from D46), so the AI sees the same weeks and files as the overlay. A pasted snippet does not follow later settings changes; copy again after changing them.
+
+## D56. Overlay layout choices
+
+- The 44 pt counter is the session metric (labeled SESSION); the right side shows WEEK and TODAY at 22 pt. While navigating to another week the WEEK label becomes that week's ISO id and the chart header shows it; TODAY and SESSION stay live. → cannot move past the current week.
+- A 14 pt chart header row carries the ceiling label (`20h`, left) and the elapsed label (`62% of week`, right, in the elapsed color) so neither collides with the lanes.
+- The tracked line is accent while running and neutral (`text`) otherwise; the current-moment point is shown in both (glowing only while running).
+- The block caret is drawn behind the text, the bar caret in front; the caret slides 70 ms between positions (off with Reduce Motion).
+
+## D57. Development launch arguments
+
+`--show` opens the overlay at launch; `--demo-state idle|typing|running|stopped` sets up a state (running/stopped write real entries, so use a dev database); `--snapshot <path>` writes a PNG of the panel content and quits (used for documentation screenshots because `screencapture` needs Screen Recording permission). Sparkle's updater is not started in demo/snapshot runs, and the whole app setup is skipped when the process hosts XCTest so `GrainsAppTests` never opens the real database or registers the hot key.
+
+## D58. Corner trigger defaults
+
+Default corner is bottom-left (top corners collide with the menu bar and Notification Center). The Hot Corners check (`com.apple.dock` `wvous-*-corner` not 0/1) runs whenever the trigger is configured and when Settings opens; a conflicting corner stays selectable but inactive, with a note. The trigger fires only when the overlay is not already visible.
