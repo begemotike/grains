@@ -10,6 +10,12 @@ protocol KeyCaptureDelegate: AnyObject {
     func editorDidChange()
     /// Caret rectangle in window coordinates, for IME candidate windows.
     func caretRectInWindow() -> NSRect
+    /// Accessibility hint for the line (the inline completion, D67); never part of the value.
+    var editorAccessibilityHint: String? { get }
+}
+
+extension KeyCaptureDelegate {
+    var editorAccessibilityHint: String? { nil }
 }
 
 /// The overlay's first responder. Turns `NSEvent`s into `KeyInput` deterministically:
@@ -73,8 +79,10 @@ final class KeyCaptureView: NSView, @preconcurrency NSTextInputClient {
             send(.returnKey)
         } else if name == "cancelOperation:" {
             send(.escape)
+        } else if name == "insertTab:" {
+            send(.tab)
         }
-        // Everything else (insertTab:, noop:, ...) is ignored without a beep.
+        // Everything else (insertBacktab:, noop:, ...) is ignored without a beep.
     }
 
     /// AppKit standard key-binding selectors → editing commands.
@@ -199,4 +207,5 @@ final class KeyCaptureView: NSView, @preconcurrency NSTextInputClient {
     override func accessibilityRole() -> NSAccessibility.Role? { .textField }
     override func accessibilityValue() -> Any? { delegate?.editor.text }
     override func accessibilityLabel() -> String? { "Entry" }
+    override func accessibilityHelp() -> String? { delegate?.editorAccessibilityHint }
 }

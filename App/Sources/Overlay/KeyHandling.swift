@@ -34,6 +34,8 @@ enum KeyInput: Equatable, Sendable {
     case space
     case returnKey
     case escape
+    /// Tab (`insertTab:`): accepts the inline completion in typing mode (D67).
+    case tab
     /// A `doCommand(by:)` editing/movement command (arrows, ⌫, ⌥⌫, ⌘⌫, ⇧-arrows...).
     case command(EditCommand)
     /// ⌘ plus a key, lowercased (`"z"`, `"a"`, `"v"`, `"c"`, `"x"`, `","`, `"w"`).
@@ -46,6 +48,8 @@ enum KeyInput: Equatable, Sendable {
 enum OverlayAction: Equatable, Sendable {
     case toggleTimer
     case commit(String)
+    /// Insert the inline completion (the text after the caret) without committing (D67).
+    case acceptCompletion(String)
     case insert(String)
     case deleteBackward
     case edit(EditCommand)
@@ -79,12 +83,19 @@ enum InputStateMachine {
         var lineIsCommitted: Bool
         /// A recovered entry awaits R (resume) / A (accept).
         var hasRecovery: Bool
+        /// The inline completion shown after the caret (typing mode, setting on), or nil.
+        var completion: String?
+        /// The caret is at the end of the line with nothing selected.
+        var caretAtEnd: Bool
 
-        init(mode: InputMode, lineText: String = "", lineIsCommitted: Bool = false, hasRecovery: Bool = false) {
+        init(mode: InputMode, lineText: String = "", lineIsCommitted: Bool = false, hasRecovery: Bool = false,
+             completion: String? = nil, caretAtEnd: Bool = true) {
             self.mode = mode
             self.lineText = lineText
             self.lineIsCommitted = lineIsCommitted
             self.hasRecovery = hasRecovery
+            self.completion = completion
+            self.caretAtEnd = caretAtEnd
         }
 
         var lineHasText: Bool { !lineText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -117,7 +128,7 @@ enum InputStateMachine {
             case .move, .moveUp, .moveDown: return true
             default: return false
             }
-        case .shortcut, .composeBegan: return false
+        case .tab, .shortcut, .composeBegan: return false
         }
     }
 
@@ -125,12 +136,16 @@ enum InputStateMachine {
 
     private static func control(_ input: KeyInput, _ c: Context) -> [OverlayAction] {
         switch input {
+        // Toggling dismisses the overlay (D65). `.hide` comes after `.toggleTimer`, so the
+        // engine command is already queued (with the line text it read) when the panel fades.
         case .space:
-            return [.toggleTimer]
+            return [.toggleTimer, .hide]
         case .returnKey:
-            return c.lineHasText ? [.toggleTimer] : []
+            return c.lineHasText ? [.toggleTimer, .hide] : []
         case .escape:
             return [.hide]
+        case .tab:
+            return []
         case .text(let text):
             if c.hasRecovery, text.count == 1 {
                 switch text.lowercased() {
@@ -141,7 +156,7 @@ enum InputStateMachine {
             }
             let cleaned = LineEditor.singleLine(text)
             if cleaned.isEmpty { return [] }
-            if cleaned.trimmingCharacters(in: .whitespaces).isEmpty { return [.toggleTimer] }
+            if cleaned.trimmingCharacters(in: .whitespaces).isEmpty { return [.toggleTimer, .hide] }
             return beginTyping(c) + [.insert(cleaned)]
         case .composeBegan:
             return beginTyping(c)
@@ -178,9 +193,12 @@ enum InputStateMachine {
         case .space:
             return [.insert(" ")]
         case .returnKey:
-            return c.lineHasText ? [.commit(c.lineText), .exitTyping] : [.exitTyping]
+            // Commit dismisses the overlay (D65); an empty line only leaves typing mode.
+            return c.lineHasText ? [.commit(c.lineText), .exitTyping, .hide] : [.exitTyping]
         case .escape:
             return [.exitTyping]
+        case .tab:
+            return acceptCompletion(c) ?? []
         case .text(let text):
             let cleaned = LineEditor.singleLine(text)
             return cleaned.isEmpty ? [] : [.insert(cleaned)]
@@ -188,6 +206,8 @@ enum InputStateMachine {
             return []
         case .command(.deleteBackward):
             return [.deleteBackward]
+        case .command(.move(.right, .character, extend: false)):
+            return acceptCompletion(c) ?? [.edit(.move(.right, .character, extend: false))]
         case .command(let command):
             return [.edit(command)]
         case .shortcut(let key):
@@ -201,5 +221,11 @@ enum InputStateMachine {
             default: return []
             }
         }
+    }
+
+    /// Tab / → at the end of the line take the inline completion (D67); never a commit.
+    private static func acceptCompletion(_ c: Context) -> [OverlayAction]? {
+        guard c.caretAtEnd, let completion = c.completion, !completion.isEmpty else { return nil }
+        return [.acceptCompletion(completion)]
     }
 }

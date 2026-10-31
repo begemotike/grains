@@ -197,7 +197,7 @@ Flags: `--db <path>` (else `GrainsPaths.databaseURL`, which honors `GRAINS_DB_PA
 - Added beyond the tables: ⌘C/⌘X copy/cut (selection, or the whole line for ⌘C in control mode), ⌘V in control mode enters typing and pastes, ⌘W hides like Escape. ↑/↓ in typing mode move to line start/end (single-line field convention), not recent cycling.
 - R/A are the recovery keys only in control mode while a recovered entry is pending (either case); otherwise they are ordinary letters.
 - The typing-mode label reads `return to switch` while an entry runs, `return to start` otherwise.
-- The hot key on an overlay that is visible but no longer key (the user clicked elsewhere with "hide when I click elsewhere" off) refocuses it instead of hiding it.
+- ~~The hot key on an overlay that is visible but no longer key (the user clicked elsewhere with "hide when I click elsewhere" off) refocuses it instead of hiding it.~~ Superseded by D66: the hot key always hides a visible overlay.
 - Key routing: Space/Return/Escape are taken by key code before the input system (except while composing marked text); ⌘ shortcuts in `performKeyEquivalent`; everything else goes through `interpretKeyEvents`, so movement/deletion follow the user's key bindings and dead keys/IMEs work via `NSTextInputClient`.
 
 ## D51. Entry line fits by shrinking, then scrolls
@@ -257,3 +257,20 @@ The panel stays key for the ~100 ms exit fade; keys arriving once `presentation.
 ## D64. A stop does not commit the line; future stop times are rejected
 
 `AppModel.toggleTimer` marks the line committed only when it starts an entry (decided inside the serialized command chain). A draft typed while running, Escaped, then Space stops the timer and stays a draft, not the stopped entry's text. History rejects an edited stop time later than now ("The stop time is in the future."), like a future start.
+
+## D65. Acting dismisses the overlay
+
+Return with a non-empty line in typing mode commits **and** hides; Space in control mode (and Return or input-system whitespace when they act as Space) toggles **and** hides. The overlay is a launcher: once the timer changed there is nothing left to do in it. `InputStateMachine` emits `.hide` after `.commit` / `.toggleTimer`, and `OverlayController.perform` applies actions in order, so the engine command (which reads the line text when it is called) is already in `AppModel`'s serialized chain before the fade begins; the hide never precedes it. Return on an empty line still only exits typing, Escape keeps its two-step meaning (typing → control → hidden), and Space in typing mode is still a space: nothing else commits.
+
+## D66. The hot key always toggles; click-outside hides by default
+
+`OverlayController.toggle()` is plain show/hide: a visible overlay hides whether or not it is key (replaces the D50 refocus rule, which made the shortcut feel unreliable after clicking elsewhere). "Hide overlay when I click elsewhere" now defaults to on (`AppSettings.Default.hideWhenClickingElsewhere = true`; an explicitly stored value is kept). Development demo/snapshot launches (`--demo-state`, `--snapshot`) ignore resign-key so the launching process taking focus back does not hide the overlay before the snapshot.
+
+## D67. Inline completion rules
+
+- Shown only in typing mode, with the setting on (`suggestPreviousEntries`, default on, Settings → Overlay), the caret at the end of the line, nothing selected and no marked text.
+- `Autocomplete.Source` is built from `recentEntries(limit: 500)` (newest first, deleted entries dropped, duplicate raw texts collapsed) and `clientLabels()` (whose `clientText` is already the most recent spelling), ranked by the label's latest use among those entries, then entry count, then name. `AppModel` caches it at launch and on every `.grainsEntriesDidChange`; the key path only scans the cached arrays.
+- While the typed text has no separator yet (` - `, ` – `, ` — `), the first label whose `label + " - "` has the text as a case-insensitive prefix wins; otherwise (or with no label match) the most recent raw text with that prefix. A candidate equal to the typed text (ignoring case) is not a completion; empty or whitespace-only input has none.
+- The ghost is the candidate's remainder after the matched prefix, so the typed text keeps the user's casing. Tab, or → at the end of the line, inserts it (`.acceptCompletion`, a line edit that marks the line a draft); it never commits or starts a timer. Typing `Den` → Tab gives `Denali - `, a second Tab the most recent `Denali - …` entry.
+- Drawn as part of the entry line's `Text` (same font size and baseline) in `Theme.sub`, no background, not counted in the shrink-to-fit width (clipped at the edge). The accessible value stays the typed text; the completion is the hint (`accessibilityHelp` on `KeyCaptureView`, `accessibilityHint` on the line).
+- `--demo-state typing` types `Denali - iPad en` (or a prefix of the most recent entry when that has no completion) so screenshots show ghost text.

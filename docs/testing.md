@@ -7,9 +7,9 @@
 | `GrainsCoreTests` (69) | `swift test` | parser, SQLite store (temp file), one-running-timer index, timer engine with fake clock/date (start/stop/toggle/switch, heartbeats, recovery paths, clock jump, sleep), soft delete |
 | `GrainsReportsTests` (45) | `swift test` | week boundaries incl. DST and year transition, ISO ids, series for midnight/week-crossing/running/overlapping entries, stats, CSV byte-exact fixtures, atomic writer |
 | `GrainsMCPTests` (54) | `swift test` | JSON-RPC framing, initialize handshake, every tool against an in-memory store, error shapes, redaction flag |
-| `GrainsAppTests` (77) | `make app-test` | key handling state machine (mode transitions for Space/Return/Escape/printables), overlay placement math, theme tokens, settings round-trip |
+| `GrainsAppTests` (100) | `make app-test` | key handling state machine (mode transitions for Space/Return/Escape/printables), overlay placement math, theme tokens, settings round-trip |
 
-`make test` runs all of them (245 tests as of 2026-10-30). CI: GitHub Actions `macos-26` runner runs `swift test` and `xcodebuild build` (unsigned) on every push; first run green.
+`make test` runs all of them (268 tests as of 2026-10-30). CI: GitHub Actions `macos-26` runner runs `swift test` and `xcodebuild build` (unsigned) on every push; first run green.
 
 ## Review history
 
@@ -25,6 +25,8 @@ Driven with synthesized HID events (`osascript` key codes) against a seeded data
 - The card measures 96% opaque over bright content (pixel sampling), as designed.
 - The bundled `grains-mcp` answers `initialize`, `current_week` (7 h, 71% of week elapsed on the seed data) and `aggregate`.
 - A stored shortcut in `UserDefaults` (`KeyboardShortcuts_toggleOverlay`) overrides the ⌘Escape default; running the app tests on this Mac had left ⌥Space there. Fresh installs get ⌘Escape.
+
+Second live run after the dismiss-on-action and autocomplete changes (Debug build, same method): ⌘Escape summons; `Den` + Tab completes to `Denali - `, Tab again to the most recent Denali entry; Return starts it and the panel is gone; summon + Space stops it and the panel is gone; ⌘Escape twice shows then hides; activating Finder hides it (click-outside default on); clean quit.
 
 ## Manual validation checklist (from the spec)
 

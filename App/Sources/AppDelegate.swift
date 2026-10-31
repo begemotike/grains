@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.exporter = exporter
 
         let overlay = OverlayController(model: model)
+        overlay.ignoresResignKey = options.isDemo
         overlay.onOpenSettings = { [weak self] in
             self?.overlay?.hide()
             self?.showSettings()
@@ -180,8 +181,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 _ = try? await engine.stop()
             case .typing:
+                // Show an inline completion (D67): the canned text completes against the dev
+                // seed data; otherwise use the start of the most recent entry.
                 model.mode = .typing
-                model.line.set("Global Credit Union - Jamf cert")
+                model.line.set("Denali - iPad en")
+                if model.completion == nil, let recent = model.recentTexts.first, recent.count > 1 {
+                    model.line.set(String(recent.prefix(max(1, recent.count * 2 / 3))))
+                }
                 model.edited()
             }
         }

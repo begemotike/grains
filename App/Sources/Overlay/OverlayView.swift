@@ -27,6 +27,7 @@ struct OverlayView: View {
         VStack(alignment: .leading, spacing: 0) {
             EntryLineView(
                 editor: model.line,
+                completion: model.completion,
                 mode: model.mode,
                 phase: model.phase,
                 isRunning: model.timer.isRunning,

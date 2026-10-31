@@ -20,6 +20,9 @@ final class OverlayController: NSObject, KeyCaptureDelegate, NSWindowDelegate {
     let presentation = OverlayPresentation()
     /// Opens Settings (⌘,).
     var onOpenSettings: (() -> Void)?
+    /// Development demos/snapshots keep the overlay up even though the launching process
+    /// takes key focus back (the click-outside setting defaults on, D66).
+    var ignoresResignKey = false
 
     private let panel: OverlayPanel
     private let keyView: KeyCaptureView
@@ -46,13 +49,9 @@ final class OverlayController: NSObject, KeyCaptureDelegate, NSWindowDelegate {
 
     // MARK: Show / hide
 
-    /// Hot key and menu: show; if visible and key, hide; if visible but not key, refocus.
+    /// Hot key: show, or hide whenever visible, key or not (D66).
     func toggle() {
-        if isVisible {
-            if panel.isKeyWindow { hide() } else { focus() }
-        } else {
-            show()
-        }
+        if isVisible { hide() } else { show() }
     }
 
     /// Show on the screen containing the pointer, key-ready before the entrance animation.
@@ -115,7 +114,7 @@ final class OverlayController: NSObject, KeyCaptureDelegate, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        if model.settings.hideWhenClickingElsewhere && presentation.isPresented { hide() }
+        if model.settings.hideWhenClickingElsewhere && presentation.isPresented && !ignoresResignKey { hide() }
     }
 
     // MARK: KeyCaptureDelegate
@@ -131,18 +130,24 @@ final class OverlayController: NSObject, KeyCaptureDelegate, NSWindowDelegate {
         hostingView.convert(presentation.caretRect, to: nil)
     }
 
+    var editorAccessibilityHint: String? {
+        model.completion.map { "Suggestion: \(model.line.text)\($0). Tab to accept." }
+    }
+
     func keyCapture(_ input: KeyInput, isRepeat: Bool) {
         // Keys typed during the hide fade (the panel is still key for ~100 ms) are dropped.
         guard presentation.isPresented else { return }
         perform(InputStateMachine.actions(for: input, in: model.inputContext, isRepeat: isRepeat))
     }
 
-    /// Apply actions in order. Pure model mutations; engine work is queued by the model.
+    /// Apply actions in order. Pure model mutations; engine work is queued by the model, so a
+    /// `.hide` after `.toggleTimer`/`.commit` runs once the command is issued (D65).
     func perform(_ actions: [OverlayAction]) {
         for action in actions {
             switch action {
             case .toggleTimer: model.toggleTimer()
             case .commit(let text): model.commit(text)
+            case .acceptCompletion(let text): model.line.insert(text); model.edited()
             case .insert(let text): model.line.insert(text); model.edited()
             case .deleteBackward: model.line.apply(.deleteBackward); model.edited()
             case .edit(let command): model.line.apply(command); model.lastEdit = Date()

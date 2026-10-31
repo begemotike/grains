@@ -47,6 +47,9 @@ final class AppModel {
     private(set) var stats: Stats
     /// Distinct recent entry texts, newest first, for ↑/↓.
     private(set) var recentTexts: [String] = []
+    /// Inline-completion candidates (D67), cached so the key path does no database work.
+    /// Refreshed at launch and on every store change.
+    private(set) var suggestions = Autocomplete.Source.empty
     /// Bumped when the chart should replay its draw-in (week navigation, rollover, show).
     private(set) var chartGeneration = 0
     private(set) var lastError: String?
@@ -69,6 +72,7 @@ final class AppModel {
         series = WeekSeries.compute(entries: [], week: week, now: now, targetHours: settings.targetHours)
         stats = Stats.compute(entries: [], week: week, today: spec.today(at: now), now: now)
         reloadEntries()
+        reloadSuggestions()
         recompute(now: now)
     }
 
@@ -117,8 +121,18 @@ final class AppModel {
         return Formatting.shortClock(timer.elapsed)
     }
 
+    /// The ghost text after the caret (D67): typing mode, setting on, caret at the end of the
+    /// line, nothing selected or composing. Computed from the cached `suggestions` only.
+    var completion: String? {
+        guard settings.suggestPreviousEntries, mode == .typing, caretAtEnd, line.markedRange == nil else { return nil }
+        return suggestions.suggestion(for: line.text)
+    }
+
+    private var caretAtEnd: Bool { !line.hasSelection && line.caret == line.length }
+
     var inputContext: InputStateMachine.Context {
-        .init(mode: mode, lineText: line.text, lineIsCommitted: lineIsCommitted, hasRecovery: timer.recovered != nil)
+        .init(mode: mode, lineText: line.text, lineIsCommitted: lineIsCommitted, hasRecovery: timer.recovered != nil,
+              completion: completion, caretAtEnd: caretAtEnd)
     }
 
     // MARK: Engine mirror
@@ -255,6 +269,7 @@ final class AppModel {
     /// The store changed (any process write in this app).
     func entriesDidChange() {
         reloadEntries()
+        reloadSuggestions()
         recompute()
     }
 
@@ -301,6 +316,15 @@ final class AppModel {
                 .filter { seen.insert($0).inserted }
                 .prefix(20)
                 .map { $0 }
+        } catch {
+            report(error)
+        }
+    }
+
+    private func reloadSuggestions() {
+        do {
+            suggestions = Autocomplete.Source(entries: try store.recentEntries(limit: Autocomplete.recentLimit),
+                                              labels: try store.clientLabels())
         } catch {
             report(error)
         }

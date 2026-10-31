@@ -37,17 +37,19 @@ final class AppSettings {
         static let targetHours = "targetHours"
         static let showElapsedInMenuBar = "showElapsedInMenuBar"
         static let hideWhenClickingElsewhere = "hideWhenClickingElsewhere"
+        static let suggestPreviousEntries = "suggestPreviousEntries"
         static let cornerTriggerEnabled = "cornerTriggerEnabled"
         static let cornerTriggerCorner = "cornerTriggerCorner"
         static let exportFolderPath = "exportFolderPath"
         static let redactNotes = "redactNotes"
     }
 
-    /// Defaults, as one table (docs/interaction.md, D13, D17).
+    /// Defaults, as one table (docs/interaction.md, D13, D17, D66, D67).
     enum Default {
         static let weekStartsOn = 2
         static let showElapsedInMenuBar = true
-        static let hideWhenClickingElsewhere = false
+        static let hideWhenClickingElsewhere = true
+        static let suggestPreviousEntries = true
         static let cornerTriggerEnabled = false
         static let cornerTriggerCorner = ScreenCorner.bottomLeft
         static let redactNotes = false
@@ -66,6 +68,8 @@ final class AppSettings {
     var targetHours: Double? { didSet { defaults.set(targetHours ?? 0, forKey: Key.targetHours) } }
     var showElapsedInMenuBar: Bool { didSet { defaults.set(showElapsedInMenuBar, forKey: Key.showElapsedInMenuBar) } }
     var hideWhenClickingElsewhere: Bool { didSet { defaults.set(hideWhenClickingElsewhere, forKey: Key.hideWhenClickingElsewhere) } }
+    /// Inline completion from previous entries while typing (D67).
+    var suggestPreviousEntries: Bool { didSet { defaults.set(suggestPreviousEntries, forKey: Key.suggestPreviousEntries) } }
     var cornerTriggerEnabled: Bool { didSet { defaults.set(cornerTriggerEnabled, forKey: Key.cornerTriggerEnabled) } }
     var cornerTriggerCorner: ScreenCorner { didSet { defaults.set(cornerTriggerCorner.rawValue, forKey: Key.cornerTriggerCorner) } }
     /// Export folder as a plain path (not sandboxed, D3: no bookmarks needed).
@@ -82,6 +86,7 @@ final class AppSettings {
         targetHours = target > 0 ? target : nil
         showElapsedInMenuBar = defaults.object(forKey: Key.showElapsedInMenuBar) as? Bool ?? Default.showElapsedInMenuBar
         hideWhenClickingElsewhere = defaults.object(forKey: Key.hideWhenClickingElsewhere) as? Bool ?? Default.hideWhenClickingElsewhere
+        suggestPreviousEntries = defaults.object(forKey: Key.suggestPreviousEntries) as? Bool ?? Default.suggestPreviousEntries
         cornerTriggerEnabled = defaults.object(forKey: Key.cornerTriggerEnabled) as? Bool ?? Default.cornerTriggerEnabled
         cornerTriggerCorner = defaults.string(forKey: Key.cornerTriggerCorner).flatMap(ScreenCorner.init(rawValue:)) ?? Default.cornerTriggerCorner
         exportFolderPath = defaults.string(forKey: Key.exportFolderPath) ?? defaultExportFolder

@@ -13,8 +13,8 @@ struct SettingsActions {
     var settingsDidChange: @MainActor () -> Void
 }
 
-/// The Settings window: shortcut, corner trigger, export, week, target, menu bar, login,
-/// overlay behavior, AI sharing and Claude configuration, updates, version.
+/// The Settings window: shortcut, corner trigger, overlay behavior (click-outside, suggestions),
+/// export, week, target, menu bar, login, AI sharing and Claude configuration, updates, version.
 struct SettingsView: View {
     @Bindable var settings: AppSettings
     let actions: SettingsActions
@@ -41,7 +41,11 @@ struct SettingsView: View {
                     Text("The system Hot Corners use this corner, so Grains will not trigger there.")
                         .font(.caption).foregroundStyle(Theme.error)
                 }
+            }
+
+            Section("Overlay") {
                 Toggle("Hide overlay when I click elsewhere", isOn: $settings.hideWhenClickingElsewhere)
+                Toggle("Suggest previous entries while typing", isOn: $settings.suggestPreviousEntries)
             }
 
             Section("Week") {

@@ -5,6 +5,8 @@ import SwiftUI
 /// arrive through `KeyCaptureView`.
 struct EntryLineView: View {
     let editor: LineEditor
+    /// Inline completion drawn muted after the text (D67); not part of the accessible value.
+    let completion: String?
     let mode: InputMode
     let phase: OverlayPhase
     let isRunning: Bool
@@ -28,6 +30,7 @@ struct EntryLineView: View {
                     .fixedSize()
                     .frame(height: EntryLineLayout.lineHeight)
                     .accessibilityLabel(editor.text.isEmpty ? "Empty entry" : editor.text)
+                    .accessibilityHint(completion.map { "Suggestion: \(editor.text)\($0). Tab to accept." } ?? "")
                 caret(layout, behindText: false)
             }
             .offset(x: -scroll)
@@ -51,6 +54,9 @@ struct EntryLineView: View {
     private func attributed(_ layout: EntryLineLayout) -> AttributedString {
         let ns = editor.text as NSString
         guard ns.length > 0 else { return AttributedString("") }
+        // Ghost text rides in the same Text run, so it shares the line's font and baseline.
+        var ghost = AttributedString(completion ?? "")
+        ghost.foregroundColor = Theme.sub(contrast)
         func piece(_ range: NSRange?, _ color: Color) -> AttributedString {
             guard let range, range.length > 0 else { return AttributedString() }
             var a = AttributedString(ns.substring(with: range))
@@ -62,7 +68,7 @@ struct EntryLineView: View {
             return piece(NSRange(location: 0, length: ns.length), sub)
         }
         let s = layout.styling
-        return piece(s.client, Theme.accent) + piece(s.separator, sub) + piece(s.note, Theme.text)
+        return piece(s.client, Theme.accent) + piece(s.separator, sub) + piece(s.note, Theme.text) + ghost
     }
 
     @ViewBuilder

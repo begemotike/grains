@@ -17,13 +17,15 @@ final class InputStateMachineTests: XCTestCase {
 
     // MARK: Control mode
 
-    func testControlSpaceToggles() {
-        XCTAssertEqual(act(.space, control()), [.toggleTimer])
-        XCTAssertEqual(act(.space, control("Denali - iPad", committed: true)), [.toggleTimer])
+    /// D65: Space toggles, then hides (the hide is ordered after the engine command).
+    func testControlSpaceTogglesThenHides() {
+        XCTAssertEqual(act(.space, control()), [.toggleTimer, .hide])
+        XCTAssertEqual(act(.space, control("Denali - iPad", committed: true)), [.toggleTimer, .hide])
+        XCTAssertEqual(act(.text(" "), control("Denali")), [.toggleTimer, .hide])
     }
 
     func testControlReturnTogglesOnlyWithText() {
-        XCTAssertEqual(act(.returnKey, control("Denali")), [.toggleTimer])
+        XCTAssertEqual(act(.returnKey, control("Denali")), [.toggleTimer, .hide])
         XCTAssertEqual(act(.returnKey, control()), [])
         XCTAssertEqual(act(.returnKey, control("   ")), [])
     }
@@ -102,8 +104,17 @@ final class InputStateMachineTests: XCTestCase {
         XCTAssertEqual(act(.space, typing("Denali")), [.insert(" ")])
     }
 
-    func testTypingReturnCommitsAndExits() {
-        XCTAssertEqual(act(.returnKey, typing("Denali - iPad")), [.commit("Denali - iPad"), .exitTyping])
+    /// D65: Return commits, then hides.
+    func testTypingReturnCommitsAndHides() {
+        let actions = act(.returnKey, typing("Denali - iPad"))
+        XCTAssertEqual(actions, [.commit("Denali - iPad"), .exitTyping, .hide])
+        XCTAssertEqual(actions.first, .commit("Denali - iPad"))
+        XCTAssertEqual(actions.last, .hide)
+    }
+
+    func testTypingReturnIgnoresCompletion() {
+        let c = InputStateMachine.Context(mode: .typing, lineText: "Den", completion: "ali - ")
+        XCTAssertEqual(act(.returnKey, c), [.commit("Den"), .exitTyping, .hide])
     }
 
     func testTypingReturnOnEmptyLineOnlyExits() {
@@ -150,6 +161,51 @@ final class InputStateMachineTests: XCTestCase {
         XCTAssertEqual(act(.text("a\nb"), typing()), [.insert("a b")])
     }
 
+    // MARK: Inline completion (D67)
+
+    private func typing(_ text: String, completion: String?, caretAtEnd: Bool = true) -> InputStateMachine.Context {
+        .init(mode: .typing, lineText: text, completion: completion, caretAtEnd: caretAtEnd)
+    }
+
+    func testTabAndRightArrowAcceptCompletionAtEnd() {
+        let c = typing("Den", completion: "ali - ")
+        XCTAssertEqual(act(.tab, c), [.acceptCompletion("ali - ")])
+        XCTAssertEqual(act(.command(.move(.right, .character, extend: false)), c), [.acceptCompletion("ali - ")])
+    }
+
+    func testTabWithoutCompletionDoesNothing() {
+        XCTAssertEqual(act(.tab, typing("Den", completion: nil)), [])
+        XCTAssertEqual(act(.tab, typing("Den")), [])
+        XCTAssertEqual(act(.tab, typing("Den", completion: "")), [])
+    }
+
+    func testRightArrowWithoutCompletionMovesCaret() {
+        XCTAssertEqual(act(.command(.move(.right, .character, extend: false)), typing("Den", completion: nil)),
+                       [.edit(.move(.right, .character, extend: false))])
+    }
+
+    func testCompletionNotAcceptedAwayFromLineEnd() {
+        let c = typing("Den", completion: "ali - ", caretAtEnd: false)
+        XCTAssertEqual(act(.tab, c), [])
+        XCTAssertEqual(act(.command(.move(.right, .character, extend: false)), c),
+                       [.edit(.move(.right, .character, extend: false))])
+    }
+
+    func testOtherKeysKeepTypingWithCompletion() {
+        let c = typing("Den", completion: "ali - ")
+        XCTAssertEqual(act(.text("v"), c), [.insert("v")])
+        XCTAssertEqual(act(.space, c), [.insert(" ")])
+        XCTAssertEqual(act(.command(.deleteBackward), c), [.deleteBackward])
+        XCTAssertEqual(act(.command(.move(.right, .word, extend: false)), c), [.edit(.move(.right, .word, extend: false))])
+        XCTAssertEqual(act(.command(.move(.right, .character, extend: true)), c), [.edit(.move(.right, .character, extend: true))])
+        XCTAssertEqual(act(.escape, c), [.exitTyping])
+    }
+
+    func testControlTabDoesNothing() {
+        XCTAssertEqual(act(.tab, control("Denali")), [])
+        XCTAssertEqual(act(.tab, .init(mode: .control, lineText: "Den", completion: "ali")), [])
+    }
+
     // MARK: Whole flows
 
     /// Space toggles in control, is a space in typing; Return returns to control.
@@ -176,7 +232,7 @@ final class InputStateMachineTests: XCTestCase {
         send(.returnKey)
         XCTAssertEqual(mode, .control)
         send(.space)
-        XCTAssertEqual(log.last, .toggleTimer)
+        XCTAssertEqual(log.suffix(2), [.toggleTimer, .hide])
     }
 
     // MARK: Key auto-repeat
@@ -190,7 +246,7 @@ final class InputStateMachineTests: XCTestCase {
             XCTAssertEqual(InputStateMachine.actions(for: input, in: c, isRepeat: true), [], "\(input)")
         }
         // The first press still acts.
-        XCTAssertEqual(InputStateMachine.actions(for: .space, in: c, isRepeat: false), [.toggleTimer])
+        XCTAssertEqual(InputStateMachine.actions(for: .space, in: c, isRepeat: false), [.toggleTimer, .hide])
     }
 
     func testTypingKeepsRepeatedKeys() {
@@ -220,6 +276,14 @@ final class KeyCaptureRepeatTests: XCTestCase {
                          isARepeat: isRepeat, keyCode: code)
     }
 
+    func testTabIsForwarded() throws {
+        let view = KeyCaptureView(frame: .zero)
+        let recorder = Recorder()
+        view.delegate = recorder
+        view.doCommand(by: #selector(NSResponder.insertTab(_:)))
+        XCTAssertEqual(recorder.received.map(\.0), [.tab])
+    }
+
     func testSpaceRepeatFlagIsForwarded() throws {
         let view = KeyCaptureView(frame: .zero)
         let recorder = Recorder()
@@ -233,6 +297,6 @@ final class KeyCaptureRepeatTests: XCTestCase {
         let toggles = recorder.received.flatMap {
             InputStateMachine.actions(for: $0.0, in: .init(mode: .control), isRepeat: $0.1)
         }
-        XCTAssertEqual(toggles, [.toggleTimer])
+        XCTAssertEqual(toggles, [.toggleTimer, .hide])
     }
 }

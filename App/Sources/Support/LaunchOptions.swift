@@ -1,7 +1,8 @@
 import Foundation
 
 /// Development launch arguments: `--show` opens the overlay at launch; `--demo-state
-/// idle|typing|running|stopped` puts it in a state for screenshots.
+/// idle|typing|running|stopped` puts it in a state for screenshots (`typing` shows an inline
+/// completion, D67).
 struct LaunchOptions: Equatable {
     enum DemoState: String { case idle, typing, running, stopped }
 

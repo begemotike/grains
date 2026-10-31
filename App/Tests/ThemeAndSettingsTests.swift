@@ -58,7 +58,8 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(s.weekStartsOn, 2)
         XCTAssertNil(s.targetHours)
         XCTAssertTrue(s.showElapsedInMenuBar)
-        XCTAssertFalse(s.hideWhenClickingElsewhere)
+        XCTAssertTrue(s.hideWhenClickingElsewhere)
+        XCTAssertTrue(s.suggestPreviousEntries)
         XCTAssertFalse(s.cornerTriggerEnabled)
         XCTAssertEqual(s.cornerTriggerCorner, .bottomLeft)
         XCTAssertEqual(s.exportFolderPath, "/tmp/x")
@@ -71,7 +72,8 @@ final class SettingsTests: XCTestCase {
         s.weekStartsOn = 1
         s.targetHours = 32
         s.showElapsedInMenuBar = false
-        s.hideWhenClickingElsewhere = true
+        s.hideWhenClickingElsewhere = false
+        s.suggestPreviousEntries = false
         s.cornerTriggerEnabled = true
         s.cornerTriggerCorner = .topRight
         s.exportFolderPath = "/tmp/exports"
@@ -80,7 +82,8 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(t.weekStartsOn, 1)
         XCTAssertEqual(t.targetHours, 32)
         XCTAssertFalse(t.showElapsedInMenuBar)
-        XCTAssertTrue(t.hideWhenClickingElsewhere)
+        XCTAssertFalse(t.hideWhenClickingElsewhere)
+        XCTAssertFalse(t.suggestPreviousEntries)
         XCTAssertTrue(t.cornerTriggerEnabled)
         XCTAssertEqual(t.cornerTriggerCorner, .topRight)
         XCTAssertEqual(t.exportFolderPath, "/tmp/exports")
@@ -88,6 +91,21 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(defaults.bool(forKey: "redactNotes"), true)
         t.targetHours = nil
         XCTAssertNil(AppSettings(defaults: defaults, environment: [:], defaultExportFolder: "/tmp/x").targetHours)
+    }
+
+    /// D66: click-outside hides by default.
+    func testHideOnClickOutsideDefaultsOn() throws {
+        XCTAssertTrue(AppSettings.Default.hideWhenClickingElsewhere)
+        XCTAssertTrue(AppSettings(defaults: try freshDefaults(), environment: [:], defaultExportFolder: "/").hideWhenClickingElsewhere)
+    }
+
+    /// D67: suggestions are on by default; a stored false wins.
+    func testAutocompleteDefaultsOn() throws {
+        let defaults = try freshDefaults()
+        XCTAssertTrue(AppSettings.Default.suggestPreviousEntries)
+        XCTAssertTrue(AppSettings(defaults: defaults, environment: [:], defaultExportFolder: "/").suggestPreviousEntries)
+        defaults.set(false, forKey: AppSettings.Key.suggestPreviousEntries)
+        XCTAssertFalse(AppSettings(defaults: defaults, environment: [:], defaultExportFolder: "/").suggestPreviousEntries)
     }
 
     func testInvalidWeekStartFallsBack() throws {
