@@ -150,3 +150,41 @@ Keys: `day` → `yyyy-MM-dd` (local), `week` → ISO id of the spec week, `clien
 ## D34. Week construction details
 
 `Week.days` are built by `calendar.date(byAdding: .day)` + `startOfDay` (never 86 400 s arithmetic); `startsOn` outside 1...7 is wrapped. `Week.previous/next` step via the instant just before the start / at the end. `Week` is also `Codable` for MCP payloads. `WeekSeries` additionally exposes `dailyHours` (7 values) and `targetLine`, and the ceiling rule is public as `WeekSeries.hoursCeiling(trackedHours:targetHours:)`. `Stats.byClient` is `[ClientHours]` instead of the tuple in the original sketch so it is `Equatable`/`Codable`.
+
+## D40. GrainsMCP protocol handling details
+
+`MCPServer(store:spec:exportDirectory:options:)` is an immutable `Sendable` final class; `handle(_ requestJSON: Data) -> Data?` maps one message to one compact response line (nil for notifications), and `runStdio()` adds newline-delimited framing. JSON is a hand-written `JSONValue` with its own serializer: object keys always sorted, the compact form never contains a raw newline, identical input gives identical bytes. Choices the spec left open:
+- `initialize` always answers `protocolVersion: "2025-06-18"` (the only revision implemented) and includes `instructions` with the Grains conventions. Requests are served even before `initialize` (no session gating; stdio has one client).
+- Batches (a JSON array) → one `-32600` error with `id: null` (batching was removed in 2025-06-18). `"id": null`, a non-object message, a wrong `jsonrpc` or a missing `method` → `-32600`. Malformed JSON → `-32700`, `id: null`.
+- Messages without `id` are never answered, whatever the method; client responses (`result`/`error`, no `method`) are ignored.
+- `resources/list`, `resources/templates/list` and `prompts/list` return empty lists; capabilities advertise only `tools` (`listChanged: false`).
+- Each tool result has one `text` content item with the pretty-printed (sorted keys) JSON and `structuredContent` with the same object, plus `isError: false`. Tools carry `annotations.readOnlyHint = true`. No `outputSchema` in v1.
+
+## D41. Protocol errors versus tool errors
+
+`-32602` is used only when the `tools/call` envelope is wrong: `params` not an object, no string `name`, unknown tool name (as the MCP spec prescribes), `arguments` not an object. Everything about argument *values* (missing required argument, wrong JSON type, out-of-range limit, unparseable date, `to` not after `from`, unknown `group_by`, invalid week id, malformed or unknown session id) is a tool result with `isError: true` and a readable message, so the model can correct itself. Undeclared extra arguments are ignored at runtime even though the schemas say `additionalProperties: false`. Database failures are also `isError` results ("Could not read the Grains database: ...").
+
+## D42. `--redact-notes` semantics
+
+Applied to every output, including the `export_week` CSV: the `note` key is omitted from session objects (CSV `note` column empty), and `raw_text` is replaced by `client_text`, or `[redacted]` when the entry has no client. `search_sessions` then matches only `client_text`, because matching hidden text would reveal it through the hit list. Totals and client labels are unaffected.
+
+## D43. Tool date inputs and time output
+
+Inputs accept `YYYY-MM-DD` (a local day in `WeekSpec.calendar.timeZone`) or RFC 3339 `YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)` (`T`, `t` or a space as separator; an offset is required). `from` is inclusive, `to` exclusive; a date-only `to` means the next local midnight, so the day is included (a 25 h DST day stays 25 h). Impossible dates (Feb 30, hour 25) are rejected rather than rolled over. Output times use the CSV's formatting rule (D32): whole seconds, truncated, numeric offset (`+00:00`, never `Z`). Seconds fields are the exact values from `Entry.duration(asOf:)`/`seconds(within:asOf:)` and `Aggregator`; hours are rounded to 2 decimals with the `AggregateRow.hours` rule.
+
+## D44. `export_week` week resolution
+
+A week id resolves to the `WeekSpec` week whose `isoIdentifier` equals it, i.e. the week whose first day lies in that ISO week, which is exactly the week the app's `Grains-<id>.csv` covers. With the default Monday start that is the week containing the ISO week's Monday; for other start days, the week containing that Monday can carry the *previous* id (a Sunday-start week containing Monday Oct 26 starts Sun Oct 25 = 2026-W43), so the server takes the following week instead (Sun Nov 1 for 2026-W44). Entries are fetched over the week widened by one second at the start so a zero-length entry at the week start is not lost (D32), then `CSVExporter.csv(for:entries:now:)` produces the text unchanged. `structuredContent` carries `week`, `file_name`, `start`, `end`, `time_zone`, `row_count` and `csv`.
+
+## D45. Tool output shapes the table left open
+
+- Session object: `id`, `raw_text`, `client_text`, `client_id`, `note` (absent when redacted), `started_at`, `stopped_at` (null while running), `running`, `duration_seconds` (whole session as of now), `recovered` (unreconciled recovery, same rule as the CSV), and in `list_sessions` also `seconds_in_range`.
+- `list_sessions`: `limit` 1–1000 (default 200), `client` is a case-insensitive exact match on `client_text`; returns `count`, `total_matching`, `truncated`. `search_sessions`: `limit` 1–500 (default 50), newest first.
+- `aggregate`: `total_seconds`/`total_hours` are the merged total over the whole range (sum of the day buckets), so for `client` grouping the rows can sum to more than the total when different clients overlap (D31). For a full week the total equals `WeekSeries.totalHours` (tested).
+- `list_client_labels`: the store's `clientLabels()` excludes unlabeled entries, so the `client_text: null` row is computed from all live entries; totals are whole durations as of now (running entries included).
+- `current_week`: `total_hours` and per-day `hours` rounded to 2 decimals, `elapsed_fraction` to 4, plus `week_length_hours`, `running`, and with `target_hours` the on-pace `target_hours_at_now` (target × elapsed fraction).
+- `list_exports`: files named `Grains-*.csv`, sorted by name; `week` is null when the name has no `YYYY-Www` after the prefix; a missing folder is `exists: false`, not an error.
+
+## D46. `grains-mcp` command line
+
+Flags: `--db <path>` (else `GrainsPaths.databaseURL`, which honors `GRAINS_DB_PATH`), `--export-dir <path>` (else `~/Documents/Grains`), `--redact-notes`, `--week-start <1-7>` (default 2, Monday; calendar `.autoupdatingCurrent`), `--version`, `--help`. Exit codes: 0 on stdin EOF or when stdout is closed, 2 when the database is missing ("Grains database not found at <path>. Launch Grains once to create it.") or cannot be opened read-only, 64 for usage errors. SIGPIPE is ignored so a closed stdout becomes a write error and a clean exit. The `--http` transport is not implemented (roadmap). Note: `GrainsPaths.databaseURL` creates `~/Library/Application Support/Grains/` as a side effect even in the MCP process; harmless, but the server never creates the database file.
